@@ -64,24 +64,69 @@ def scan_repository(path_text: str) -> RepositoryGraph:
 
 def _resolve_imports(graph: RepositoryGraph) -> None:
     file_paths = {item.path for item in graph.files}
-    python_modules = {
-        path[:-3].replace("/", "."): path for path in file_paths if path.endswith(".py")
-    }
-    js_modules = {path.rsplit(".", 1)[0]: path for path in file_paths if "." in path}
+    python_modules = _python_module_index(file_paths)
+    js_modules = _js_module_index(file_paths)
 
     for edge in graph.imports:
-        if edge.target.startswith("."):
-            continue
-        if edge.target in python_modules:
+        if edge.target.startswith("./") or edge.target.startswith("../"):
+            edge.target_path = _resolve_relative_module(edge.source_path, edge.target, js_modules)
+        elif edge.target.startswith("."):
+            edge.target_path = _resolve_relative_python_module(
+                edge.source_path, edge.target, python_modules
+            )
+        elif edge.target in python_modules:
             edge.target_path = python_modules[edge.target]
         elif edge.target in js_modules:
             edge.target_path = js_modules[edge.target]
-        elif edge.target.startswith("./") or edge.target.startswith("../"):
-            source_parent = Path(edge.source_path).parent
-            candidate = (source_parent / edge.target).as_posix()
-            edge.target_path = next(
-                (path for path in file_paths if path.startswith(candidate)), None
-            )
+
+
+def _python_module_index(file_paths: set[str]) -> dict[str, str]:
+    modules: dict[str, str] = {}
+    for path in sorted(file_paths, key=len):
+        if not path.endswith(".py"):
+            continue
+        module = path[:-3].replace("/", ".")
+        _add_module_aliases(modules, module, path)
+        if module.endswith(".__init__"):
+            _add_module_aliases(modules, module.removesuffix(".__init__"), path)
+    return modules
+
+
+def _add_module_aliases(modules: dict[str, str], module: str, path: str) -> None:
+    parts = module.split(".")
+    for index in range(len(parts)):
+        alias = ".".join(parts[index:])
+        modules.setdefault(alias, path)
+
+
+def _js_module_index(file_paths: set[str]) -> dict[str, str]:
+    modules: dict[str, str] = {}
+    for path in sorted(file_paths, key=len):
+        if "." not in path:
+            continue
+        stem = path.rsplit(".", 1)[0]
+        modules.setdefault(stem, path)
+        modules.setdefault(f"./{stem}", path)
+    return modules
+
+
+def _resolve_relative_module(source_path: str, target: str, modules: dict[str, str]) -> str | None:
+    source_parent = Path(source_path).parent
+    normalized = (source_parent / target).as_posix()
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return modules.get(normalized)
+
+
+def _resolve_relative_python_module(
+    source_path: str, target: str, modules: dict[str, str]
+) -> str | None:
+    leading_dots = len(target) - len(target.lstrip("."))
+    module_tail = target.lstrip(".")
+    source_parts = Path(source_path).with_suffix("").parts
+    base_parts = source_parts[: max(len(source_parts) - leading_dots, 0)]
+    candidate = ".".join([*base_parts, module_tail]).strip(".")
+    return modules.get(candidate)
 
 
 def _score_load_bearing_files(graph: RepositoryGraph) -> None:
