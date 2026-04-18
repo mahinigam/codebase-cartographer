@@ -68,3 +68,12 @@ def test_scan_repository_resolves_relative_typescript_imports(
     assert imports
     assert imports[0].target == "./api"
     assert imports[0].target_path == "frontend/src/api.ts"
+
+
+def test_scan_repository_records_root_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "allowed_repo_roots_raw", "")
+    (tmp_path / "main.py").write_text("print('ok')\n", encoding="utf-8")
+
+    graph = scan_repository(str(tmp_path))
+
+    assert graph.root_path == str(tmp_path.resolve())

@@ -62,6 +62,14 @@ class Neo4jStore:
                 key=f"{graph.root_path}:{file.path}",
                 props=_file_props(file, graph.root_path),
             )
+        tx.run(
+            """
+            MATCH (r:Repository {root_path: $root_path})-[:CONTAINS]->(f:File)
+            OPTIONAL MATCH (f)-[rel:IMPORTS|DEPENDS_ON]->()
+            DELETE rel
+            """,
+            root_path=graph.root_path,
+        )
         for symbol in graph.symbols:
             tx.run(
                 """
@@ -99,26 +107,42 @@ class Neo4jStore:
                     target=edge.target,
                 )
 
-    def overview(self) -> dict:
+    def repositories(self) -> list[dict]:
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                MATCH (r:Repository)
+                OPTIONAL MATCH (r)-[:CONTAINS]->(f:File)
+                RETURN r.name AS name, r.root_path AS root_path,
+                       count(DISTINCT f) AS files, toString(r.indexed_at) AS indexed_at
+                ORDER BY indexed_at DESC
+                """
+            )
+            return [dict(record) for record in result]
+
+    def overview(self, repo_path: str | None = None) -> dict:
         with self.driver.session() as session:
             record = session.run(
                 """
                 MATCH (r:Repository)
+                WHERE $repo_path IS NULL OR r.root_path = $repo_path
                 OPTIONAL MATCH (r)-[:CONTAINS]->(f:File)
                 OPTIONAL MATCH (f)-[:DEFINES]->(s:Symbol)
                 RETURN count(DISTINCT r) AS repos,
                        count(DISTINCT f) AS files,
                        count(DISTINCT s) AS symbols,
                        coalesce(round(avg(f.load_bearing_score), 2), 0) AS avg_score
-                """
+                """,
+                repo_path=repo_path,
             ).single()
             return dict(record) if record else {}
 
-    def top_load_bearing_files(self, limit: int = 10) -> list[dict]:
+    def top_load_bearing_files(self, limit: int = 10, repo_path: str | None = None) -> list[dict]:
         with self.driver.session() as session:
             result = session.run(
                 """
-                MATCH (f:File)
+                MATCH (r:Repository)-[:CONTAINS]->(f:File)
+                WHERE $repo_path IS NULL OR r.root_path = $repo_path
                 RETURN f.path AS path, f.language AS language, f.loc AS loc,
                        f.complexity AS complexity, f.churn_count AS churn_count,
                        f.load_bearing_score AS load_bearing_score
@@ -126,20 +150,24 @@ class Neo4jStore:
                 LIMIT $limit
                 """,
                 limit=limit,
+                repo_path=repo_path,
             )
             return [dict(record) for record in result]
 
-    def graph_slice(self, limit: int = 80) -> dict:
+    def graph_slice(self, limit: int = 80, repo_path: str | None = None) -> dict:
         with self.driver.session() as session:
             nodes = session.run(
                 """
-                MATCH (f:File)
+                MATCH (r:Repository)-[:CONTAINS]->(f:File)
+                WHERE $repo_path IS NULL OR r.root_path = $repo_path
                 RETURN f.key AS id, f.path AS label,
-                       f.load_bearing_score AS score, labels(f) AS labels
+                       f.load_bearing_score AS score, labels(f) AS labels,
+                       f.root_path AS repo_path
                 ORDER BY f.load_bearing_score DESC
                 LIMIT $limit
                 """,
                 limit=limit,
+                repo_path=repo_path,
             )
             node_rows = [dict(record) for record in nodes]
             ids = [row["id"] for row in node_rows]
@@ -154,52 +182,84 @@ class Neo4jStore:
             )
             return {"nodes": node_rows, "edges": [dict(record) for record in edges]}
 
-    def impact_for_file(self, path: str, depth: int = 3) -> dict:
+    def impact_for_file(
+        self, path: str, depth: int = 3, repo_path: str | None = None
+    ) -> dict:
         with self.driver.session() as session:
             direct = session.run(
                 """
-                MATCH (target:File {path: $path})
+                MATCH (r:Repository)-[:CONTAINS]->(target:File {path: $path})
+                WHERE $repo_path IS NULL OR r.root_path = $repo_path
                 OPTIONAL MATCH (dependent:File)-[:IMPORTS]->(target)
+                WHERE dependent IS NULL OR dependent.root_path = target.root_path
                 RETURN collect(DISTINCT dependent.path) AS direct_dependents
                 """,
                 path=path,
+                repo_path=repo_path,
             ).single()
             transitive = session.run(
                 """
-                MATCH (target:File {path: $path})
+                MATCH (r:Repository)-[:CONTAINS]->(target:File {path: $path})
+                WHERE $repo_path IS NULL OR r.root_path = $repo_path
                 MATCH path=(dependent:File)-[:IMPORTS*1..6]->(target)
-                WHERE length(path) <= $depth
+                WHERE length(path) <= $depth AND dependent.root_path = target.root_path
                 RETURN DISTINCT dependent.path AS path, length(path) AS distance
                 ORDER BY distance, path
                 LIMIT 100
                 """,
                 path=path,
                 depth=depth,
+                repo_path=repo_path,
             )
             return {
                 "target": path,
+                "repo_path": repo_path,
                 "direct_dependents": direct["direct_dependents"] if direct else [],
                 "transitive_dependents": [dict(record) for record in transitive],
             }
 
-    def search_files(self, query: str, limit: int = 8) -> list[dict]:
-        words = [word.lower() for word in query.split() if len(word) > 2]
+    def search_files(
+        self, query: str, limit: int = 8, repo_path: str | None = None
+    ) -> list[dict]:
+        words = _search_words(query)
         if not words:
             return []
         with self.driver.session() as session:
             result = session.run(
                 """
-                MATCH (f:File)
-                WHERE any(word IN $words WHERE toLower(f.path) CONTAINS word)
+                MATCH (r:Repository)-[:CONTAINS]->(f:File)
+                WHERE $repo_path IS NULL OR r.root_path = $repo_path
                 OPTIONAL MATCH (f)-[:DEFINES]->(s:Symbol)
+                OPTIONAL MATCH (f)-[out:IMPORTS]->(imported:File)
+                OPTIONAL MATCH (dependent:File)-[incoming:IMPORTS]->(f)
+                OPTIONAL MATCH (f)-[:DEPENDS_ON]->(dep:ExternalDependency)
+                WITH f,
+                     collect(DISTINCT s.name) AS symbols,
+                     collect(DISTINCT imported.path) AS imports,
+                     collect(DISTINCT dependent.path) AS dependents,
+                     collect(DISTINCT dep.name) AS external_deps
+                WITH f, symbols, imports, dependents, external_deps,
+                     [word IN $words WHERE
+                        toLower(f.path) CONTAINS word OR
+                        any(symbol IN symbols WHERE toLower(symbol) CONTAINS word) OR
+                        any(path IN imports WHERE toLower(path) CONTAINS word) OR
+                        any(path IN dependents WHERE toLower(path) CONTAINS word) OR
+                        any(dep IN external_deps WHERE toLower(dep) CONTAINS word)
+                     ] AS matched_words
+                WHERE size(matched_words) > 0
                 RETURN f.path AS path, f.language AS language,
-                       collect(s.name)[..8] AS symbols,
-                       f.load_bearing_score AS load_bearing_score
-                ORDER BY f.load_bearing_score DESC
+                       symbols[..8] AS symbols,
+                       imports[..8] AS imports,
+                       dependents[..8] AS dependents,
+                       external_deps[..8] AS external_deps,
+                       f.load_bearing_score AS load_bearing_score,
+                       matched_words AS matched_words
+                ORDER BY size(matched_words) DESC, f.load_bearing_score DESC
                 LIMIT $limit
                 """,
                 words=words,
                 limit=limit,
+                repo_path=repo_path,
             )
             return [dict(record) for record in result]
 
@@ -227,6 +287,28 @@ def _symbol_props(symbol: CodeSymbol) -> dict:
         "end_line": symbol.end_line,
         "complexity": symbol.complexity,
     }
+
+
+def _search_words(query: str) -> list[str]:
+    cleaned = "".join(character.lower() if character.isalnum() else " " for character in query)
+    stop_words = {
+        "the",
+        "and",
+        "are",
+        "what",
+        "which",
+        "where",
+        "files",
+        "file",
+        "this",
+        "that",
+        "codebase",
+        "mention",
+        "mentions",
+        "with",
+        "from",
+    }
+    return sorted({word for word in cleaned.split() if len(word) > 2 and word not in stop_words})
 
 
 @contextmanager

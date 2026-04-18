@@ -98,6 +98,28 @@ textarea {
   color: #164e63;
 }
 
+.repoBand {
+  padding: 14px clamp(20px, 4vw, 64px);
+  background: white;
+  border-bottom: 1px solid #d7dee8;
+}
+
+.repoBand label {
+  display: grid;
+  gap: 8px;
+  color: #5b677a;
+  font-size: 13px;
+}
+
+.repoBand select {
+  max-width: 820px;
+  border: 1px solid #cad5e2;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  color: #172033;
+}
+
 .metrics {
   padding: 22px clamp(20px, 4vw, 64px);
   display: grid;
@@ -228,4 +250,3 @@ pre {
     grid-template-columns: 1fr;
   }
 }
-

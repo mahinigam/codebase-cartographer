@@ -48,5 +48,5 @@ class QueryRequest(BaseModel):
 
 class ImpactRequest(BaseModel):
     path: str
+    repo_path: str | None = None
     depth: int = Field(default=3, ge=1, le=6)
-

@@ -28,7 +28,7 @@ def scan(request: ScanRequest) -> dict:
 
     with neo4j_store() as store:
         store.upsert_repository_graph(graph)
-        overview = store.overview()
+        overview = store.overview(repo_path=graph.root_path)
     return {
         "repository": graph.name,
         "root_path": graph.root_path,
@@ -40,25 +40,33 @@ def scan(request: ScanRequest) -> dict:
 
 
 @router.get("/overview")
-def overview() -> dict:
+def overview(repo_path: str | None = None) -> dict:
     with neo4j_store() as store:
-        return {"overview": store.overview(), "load_bearing": store.top_load_bearing_files()}
+        return {
+            "overview": store.overview(repo_path=repo_path),
+            "load_bearing": store.top_load_bearing_files(repo_path=repo_path),
+        }
+
+
+@router.get("/repositories")
+def repositories() -> dict:
+    with neo4j_store() as store:
+        return {"repositories": store.repositories()}
 
 
 @router.get("/graph")
-def graph(limit: int = 80) -> dict:
+def graph(limit: int = 80, repo_path: str | None = None) -> dict:
     with neo4j_store() as store:
-        return store.graph_slice(limit=limit)
+        return store.graph_slice(limit=limit, repo_path=repo_path)
 
 
 @router.post("/query")
 async def query(request: QueryRequest) -> dict:
     with neo4j_store() as store:
-        return await answer_architecture_question(store, request.question)
+        return await answer_architecture_question(store, request.question, request.repo_path)
 
 
 @router.post("/impact")
 async def impact(request: ImpactRequest) -> dict:
     with neo4j_store() as store:
-        return await explain_impact(store, request.path, request.depth)
-
+        return await explain_impact(store, request.path, request.depth, request.repo_path)

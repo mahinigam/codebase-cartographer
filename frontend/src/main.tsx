@@ -9,8 +9,10 @@ import {
   askQuestion,
   getGraph,
   getOverview,
+  getRepositories,
   GraphData,
   LoadBearingFile,
+  RepositoryInfo,
   scanRepo
 } from "./lib/api";
 
@@ -21,14 +23,21 @@ function App() {
   const [status, setStatus] = useState("Ready to map a repository.");
   const [overview, setOverview] = useState({ repos: 0, files: 0, symbols: 0, avg_score: 0 });
   const [riskyFiles, setRiskyFiles] = useState<LoadBearingFile[]>([]);
+  const [repositories, setRepositories] = useState<RepositoryInfo[]>([]);
+  const [activeRepoPath, setActiveRepoPath] = useState(defaultRepoPath);
   const [graph, setGraph] = useState<GraphData>({ nodes: [], edges: [] });
   const [question, setQuestion] = useState("What are the riskiest parts of this codebase?");
   const [answer, setAnswer] = useState("");
   const [selectedFile, setSelectedFile] = useState("");
   const [impact, setImpact] = useState("");
 
-  async function refresh() {
-    const [overviewData, graphData] = await Promise.all([getOverview(), getGraph()]);
+  async function refresh(repoScope = activeRepoPath) {
+    const [repoData, overviewData, graphData] = await Promise.all([
+      getRepositories(),
+      getOverview(repoScope),
+      getGraph(repoScope)
+    ]);
+    setRepositories(repoData.repositories);
     setOverview({
       repos: overviewData.overview.repos ?? 0,
       files: overviewData.overview.files ?? 0,
@@ -45,13 +54,24 @@ function App() {
   async function handleScan() {
     setStatus("Scanning source, mining Git history, and writing Neo4j graph...");
     const result = await scanRepo(repoPath);
+    setActiveRepoPath(result.root_path);
     setStatus(`Indexed ${result.files} files, ${result.symbols} symbols, ${result.imports} dependency edges.`);
-    await refresh();
+    await refresh(result.root_path);
+  }
+
+  async function handleRepoChange(path: string) {
+    setActiveRepoPath(path);
+    setRepoPath(path);
+    setAnswer("");
+    setImpact("");
+    setSelectedFile("");
+    setStatus(`Viewing ${path}`);
+    await refresh(path);
   }
 
   async function handleAsk() {
     setAnswer("Thinking over the structural graph...");
-    const result = await askQuestion(question);
+    const result = await askQuestion(question, activeRepoPath);
     setAnswer(result.answer);
   }
 
@@ -59,7 +79,7 @@ function App() {
     if (!path) return;
     setSelectedFile(path);
     setImpact("Tracing dependency ripple paths...");
-    const result = await analyzeImpact(path, 3);
+    const result = await analyzeImpact(path, 3, activeRepoPath);
     setImpact(result.explanation);
   }
 
@@ -92,6 +112,25 @@ function App() {
         <span>{status}</span>
       </section>
 
+      <section className="repoBand">
+        <label>
+          Active repo
+          <select
+            value={activeRepoPath}
+            onChange={(event) => handleRepoChange(event.target.value)}
+          >
+            <option value={activeRepoPath}>{activeRepoPath}</option>
+            {repositories
+              .filter((repo) => repo.root_path !== activeRepoPath)
+              .map((repo) => (
+                <option key={repo.root_path} value={repo.root_path}>
+                  {repo.name} · {repo.files} files
+                </option>
+              ))}
+          </select>
+        </label>
+      </section>
+
       <section className="metrics">
         <Metric icon={<Layers3 />} label="Files" value={overview.files ?? 0} />
         <Metric icon={<GitBranch />} label="Symbols" value={overview.symbols ?? 0} />
@@ -103,7 +142,9 @@ function App() {
         <div className="graphPanel">
           <div className="panelHeader">
             <h2>Architecture Graph</h2>
-            <span>{flow.nodes.length} nodes</span>
+            <span>
+              {flow.nodes.length} nodes · {flow.edges.length} edges
+            </span>
           </div>
           <ReactFlow nodes={flow.nodes} edges={flow.edges} fitView>
             <Background />
