@@ -3,12 +3,13 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY package.json /app/package.json
-COPY vite.config.ts /app/vite.config.ts
+COPY package-lock.json /app/package-lock.json
+COPY next.config.ts /app/next.config.ts
 COPY tsconfig.json /app/tsconfig.json
-COPY index.html /app/index.html
 COPY src /app/src
 
-RUN npm install
+RUN npm ci
+RUN npm run build
 
 EXPOSE 5173
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+CMD ["npm", "run", "start", "--", "--hostname", "0.0.0.0"]

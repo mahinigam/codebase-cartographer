@@ -118,7 +118,7 @@ function withRepoPath(path: string, repoPath?: string) {
 }
 
 async function request(path: string, init?: RequestInit) {
-  const base = import.meta.env.VITE_API_BASE ?? "";
+  const base = process.env.NEXT_PUBLIC_API_BASE ?? "";
   const response = await fetch(`${base}${path}`, {
     ...init,
     headers: {

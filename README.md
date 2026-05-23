@@ -30,7 +30,7 @@ Large codebases are hard to change safely because their real architecture is usu
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 19 + Vite + TypeScript |
+| Frontend | Next.js + React 19 + TypeScript |
 | Backend | FastAPI (Python) |
 | Graph database | Neo4j Community |
 | Static analysis | Python AST, Tree-sitter (JS/TS) |
@@ -137,5 +137,6 @@ See `.env.example` for the full list. Key settings:
 
 ### Frontend Overrides
 
-- `VITE_API_BASE` — Point the UI to a remote backend (default: same origin via Vite proxy).
-- `VITE_DEFAULT_REPO` — Prefill the repository path input.
+- `API_BASE_URL` — Backend target used by the Next.js `/api` rewrite (default: `http://localhost:8000`).
+- `NEXT_PUBLIC_API_BASE` — Optional browser-side API base override. Leave empty to use the Next.js rewrite.
+- `NEXT_PUBLIC_DEFAULT_REPO` — Prefill the repository path input.

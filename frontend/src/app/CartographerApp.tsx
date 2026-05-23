@@ -1,7 +1,6 @@
+"use client";
+
 import { useCallback, useEffect, useState } from "react";
-import { createRoot } from "react-dom/client";
-import "reactflow/dist/style.css";
-import "./styles/app.css";
 import {
   analyzeImpact,
   askQuestion,
@@ -14,22 +13,23 @@ import {
   RepositoryInfo,
   scanRepo,
   SemanticMatch,
-} from "./lib/api";
-import { HeroSection } from "./components/HeroSection";
-import { StatusBand } from "./components/StatusBand";
-import { RepoBand } from "./components/RepoBand";
-import { MetricsRow } from "./components/MetricsRow";
-import { GraphPanel } from "./components/GraphPanel";
-import { NodeDetailDrawer } from "./components/NodeDetailDrawer";
-import { LoadBearingFiles } from "./components/LoadBearingFiles";
-import { AskPanel } from "./components/AskPanel";
-import { ImpactPanel } from "./components/ImpactPanel";
-import { ToastContainer, ToastItem, createToast } from "./components/Toast";
+} from "../lib/api";
+import { HeroSection } from "../components/HeroSection";
+import { StatusBand } from "../components/StatusBand";
+import { RepoBand } from "../components/RepoBand";
+import { MetricsRow } from "../components/MetricsRow";
+import { GraphPanel } from "../components/GraphPanel";
+import { NodeDetailDrawer } from "../components/NodeDetailDrawer";
+import { LoadBearingFiles } from "../components/LoadBearingFiles";
+import { AskPanel } from "../components/AskPanel";
+import { ImpactPanel } from "../components/ImpactPanel";
+import { ToastContainer, ToastItem, createToast } from "../components/Toast";
 
-const defaultRepoPath = import.meta.env.VITE_DEFAULT_REPO ?? "";
+type Props = {
+  defaultRepoPath: string;
+};
 
-function App() {
-  /* ---- state ---- */
+export default function CartographerApp({ defaultRepoPath }: Props) {
   const [repoPath, setRepoPath] = useState(defaultRepoPath);
   const [status, setStatus] = useState("Ready to map a repository.");
   const [overview, setOverview] = useState({ files: 0, symbols: 0, avg_score: 0 });
@@ -46,13 +46,11 @@ function App() {
   const [summaryStatus, setSummaryStatus] = useState("");
   const [drawerFile, setDrawerFile] = useState<string | null>(null);
 
-  /* loading flags */
   const [loadingScan, setLoadingScan] = useState(false);
   const [loadingAsk, setLoadingAsk] = useState(false);
   const [loadingImpact, setLoadingImpact] = useState(false);
   const [loadingSummaries, setLoadingSummaries] = useState(false);
 
-  /* toasts */
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const addToast = useCallback(
     (message: string, type: ToastItem["type"] = "error") =>
@@ -64,7 +62,6 @@ function App() {
     []
   );
 
-  /* ---- data fetching ---- */
   async function refresh(repoScope = activeRepoPath) {
     try {
       const [repoData, overviewData, graphData] = await Promise.all([
@@ -84,13 +81,13 @@ function App() {
         setSelectedFile(overviewData.load_bearing[0].path);
       }
     } catch {
-      /* swallow initial load errors — backend may not be running */
+      // The backend may not be running on initial page load.
     }
   }
 
   async function handleScan() {
     setLoadingScan(true);
-    setStatus("Scanning source, mining Git history, and writing Neo4j graph…");
+    setStatus("Scanning source, mining Git history, and writing Neo4j graph...");
     try {
       const result = await scanRepo(repoPath, summarizeOnScan);
       setActiveRepoPath(result.root_path);
@@ -161,7 +158,7 @@ function App() {
   async function handleSummaries() {
     if (!activeRepoPath) return;
     setLoadingSummaries(true);
-    setSummaryStatus("Generating summaries and embeddings…");
+    setSummaryStatus("Generating summaries and embeddings...");
     try {
       const result = await generateSummaries(activeRepoPath);
       setSummaryStatus(
@@ -190,7 +187,6 @@ function App() {
     refresh();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ---- render ---- */
   return (
     <main>
       <HeroSection
@@ -245,5 +241,3 @@ function App() {
     </main>
   );
 }
-
-createRoot(document.getElementById("root")!).render(<App />);
