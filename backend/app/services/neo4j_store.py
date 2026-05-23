@@ -79,6 +79,14 @@ class Neo4jStore:
             """,
             root_path=graph.root_path,
         )
+        tx.run(
+            """
+            MATCH (r:Repository {root_path: $root_path})-[:CONTAINS]->(f:File)
+            OPTIONAL MATCH (f)-[:DEFINES]->(s:Symbol)
+            DETACH DELETE s
+            """,
+            root_path=graph.root_path,
+        )
         for symbol in graph.symbols:
             tx.run(
                 """
@@ -298,6 +306,9 @@ class Neo4jStore:
                 """
                 MATCH (r:Repository)-[:CONTAINS]->(f:File {path: $path})
                 WHERE $repo_path IS NULL OR r.root_path = $repo_path
+                WITH f, r
+                ORDER BY r.indexed_at DESC
+                LIMIT 1
                 OPTIONAL MATCH (f)-[:DEFINES]->(s:Symbol)
                 OPTIONAL MATCH (f)-[out:IMPORTS]->(imported:File)
                 OPTIONAL MATCH (dependent:File)-[:IMPORTS]->(f)

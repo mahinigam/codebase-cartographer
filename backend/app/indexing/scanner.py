@@ -142,10 +142,16 @@ def _score_load_bearing_files(graph: RepositoryGraph) -> None:
     max_fan_in = max(fan_in.values(), default=1) or 1
 
     for file in graph.files:
+        fan_in_score = fan_in.get(file.path, 0) / max_fan_in
+        # Dampen fan-in weight for trivial utility files (small + simple).
+        # Without this, a 10-line re-export or UI atom imported everywhere
+        # would outrank genuinely load-bearing modules.
+        if file.loc < 30 and file.complexity <= 1:
+            fan_in_score *= 0.3
         file.load_bearing_score = round(
             100
             * (
-                0.45 * (fan_in.get(file.path, 0) / max_fan_in)
+                0.45 * fan_in_score
                 + 0.25 * (file.complexity / max_complexity)
                 + 0.2 * (file.churn_count / max_churn)
                 + 0.1 * min(fan_out.get(file.path, 0) / 10, 1)
