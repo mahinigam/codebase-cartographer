@@ -1,7 +1,17 @@
+from __future__ import annotations
+
 import re
 from pathlib import Path
 
 from app.models.graph import CodeSymbol, ImportEdge
+
+try:
+    from tree_sitter import Parser
+    from tree_sitter_languages import get_language
+
+    TREE_SITTER_AVAILABLE = True
+except ImportError:
+    TREE_SITTER_AVAILABLE = False
 
 IMPORT_RE = re.compile(
     r"^\s*import(?:.|\n)*?from\s+['\"]([^'\"]+)['\"]"
@@ -16,9 +26,116 @@ ARROW_RE = re.compile(
 )
 CLASS_RE = re.compile(r"^\s*(?:export\s+)?class\s+([A-Za-z_$][\w$]*)")
 
+COMPLEXITY_NODES = {
+    "if_statement",
+    "for_statement",
+    "for_in_statement",
+    "for_of_statement",
+    "while_statement",
+    "do_statement",
+    "switch_statement",
+    "catch_clause",
+    "conditional_expression",
+    "logical_expression",
+}
+
 
 def parse_js_like(
-    path: Path, relative_path: str, source: str
+    path: Path, relative_path: str, source: str, language: str | None = None
+) -> tuple[list[CodeSymbol], list[ImportEdge], int]:
+    if TREE_SITTER_AVAILABLE:
+        try:
+            return _parse_with_tree_sitter(path, relative_path, source, language)
+        except Exception:
+            pass
+    return _parse_with_regex(relative_path, source)
+
+
+def _parse_with_tree_sitter(
+    path: Path, relative_path: str, source: str, language: str | None
+) -> tuple[list[CodeSymbol], list[ImportEdge], int]:
+    language_name = _language_name(path, language)
+    parser = Parser()
+    parser.set_language(get_language(language_name))
+    source_bytes = source.encode("utf-8", errors="ignore")
+    tree = parser.parse(source_bytes)
+
+    symbols: list[CodeSymbol] = []
+    imports: list[ImportEdge] = []
+    complexity = 1
+
+    def text_for(node) -> str:
+        return source_bytes[node.start_byte : node.end_byte].decode("utf-8", errors="ignore")
+
+    def walk(node) -> None:
+        nonlocal complexity
+        if node.type in COMPLEXITY_NODES:
+            complexity += 1
+
+        if node.type == "import_statement":
+            source_node = node.child_by_field_name("source")
+            if source_node:
+                target = text_for(source_node).strip("'\"")
+                imports.append(
+                    ImportEdge(
+                        source_path=relative_path,
+                        target=target,
+                        line_number=node.start_point[0] + 1,
+                    )
+                )
+        elif node.type == "call_expression":
+            function_node = node.child_by_field_name("function")
+            arguments_node = node.child_by_field_name("arguments")
+            if function_node and text_for(function_node) == "require" and arguments_node:
+                for child in arguments_node.children:
+                    if child.type == "string":
+                        target = text_for(child).strip("'\"")
+                        imports.append(
+                            ImportEdge(
+                                source_path=relative_path,
+                                target=target,
+                                line_number=node.start_point[0] + 1,
+                            )
+                        )
+                        break
+        elif node.type == "class_declaration":
+            name_node = node.child_by_field_name("name")
+            if name_node:
+                name = text_for(name_node)
+                symbols.append(_symbol(relative_path, name, "class", f"class {name}", node))
+        elif node.type == "function_declaration":
+            name_node = node.child_by_field_name("name")
+            if name_node:
+                name = text_for(name_node)
+                symbols.append(
+                    _symbol(relative_path, name, "function", f"function {name}(...)", node)
+                )
+        elif node.type == "variable_declarator":
+            name_node = node.child_by_field_name("name")
+            value_node = node.child_by_field_name("value")
+            if name_node and value_node and value_node.type in {"arrow_function", "function"}:
+                name = text_for(name_node)
+                symbols.append(
+                    _symbol(relative_path, name, "function", f"const {name} = (...) =>", node)
+                )
+
+        for child in node.children:
+            walk(child)
+
+    walk(tree.root_node)
+    return symbols, imports, complexity
+
+
+def _language_name(path: Path, language: str | None) -> str:
+    if path.suffix == ".tsx":
+        return "tsx"
+    if language == "typescript":
+        return "typescript"
+    return "javascript"
+
+
+def _parse_with_regex(
+    relative_path: str, source: str
 ) -> tuple[list[CodeSymbol], list[ImportEdge], int]:
     symbols: list[CodeSymbol] = []
     imports: list[ImportEdge] = []
@@ -57,13 +174,21 @@ def parse_js_like(
     return symbols, imports, complexity
 
 
-def _symbol(relative_path: str, name: str, kind: str, signature: str, line_no: int) -> CodeSymbol:
+def _symbol(
+    relative_path: str, name: str, kind: str, signature: str, node_or_line
+) -> CodeSymbol:
+    if hasattr(node_or_line, "start_point"):
+        start_line = node_or_line.start_point[0] + 1
+        end_line = node_or_line.end_point[0] + 1
+    else:
+        start_line = int(node_or_line)
+        end_line = int(node_or_line)
     return CodeSymbol(
-        id=f"{relative_path}:{name}:{line_no}",
+        id=f"{relative_path}:{name}:{start_line}",
         file_path=relative_path,
         name=name,
         kind=kind,
         signature=signature,
-        start_line=line_no,
-        end_line=line_no,
+        start_line=start_line,
+        end_line=end_line,
     )

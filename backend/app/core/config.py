@@ -16,6 +16,14 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5-coder:7b"
 
+    embedding_provider: str = "gemini"
+    fallback_embedding_provider: str = "ollama"
+    gemini_embedding_model: str = "text-embedding-004"
+    ollama_embedding_model: str = "nomic-embed-text"
+    embedding_dimensions: int = 768
+    summary_max_files: int = 120
+    summary_max_chars: int = 4000
+
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_username: str = "neo4j"
     neo4j_password: str = Field(default="", repr=False)

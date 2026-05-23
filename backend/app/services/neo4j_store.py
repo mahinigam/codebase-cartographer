@@ -22,6 +22,13 @@ class Neo4jStore:
             return bool(session.run("RETURN 1 AS ok").single()["ok"])
 
     def ensure_schema(self) -> None:
+        vector_dimensions = settings.embedding_dimensions
+        vector_index = (
+            "CREATE VECTOR INDEX summary_embedding IF NOT EXISTS "
+            "FOR (s:Summary) ON (s.embedding) "
+            "OPTIONS {indexConfig: {`vector.dimensions`: %d, "
+            "`vector.similarity_function`: 'cosine'}}"
+        ) % vector_dimensions
         statements = [
             (
                 "CREATE CONSTRAINT repo_path IF NOT EXISTS "
@@ -29,7 +36,9 @@ class Neo4jStore:
             ),
             "CREATE CONSTRAINT file_key IF NOT EXISTS FOR (f:File) REQUIRE f.key IS UNIQUE",
             "CREATE CONSTRAINT symbol_id IF NOT EXISTS FOR (s:Symbol) REQUIRE s.id IS UNIQUE",
+            "CREATE CONSTRAINT summary_key IF NOT EXISTS FOR (s:Summary) REQUIRE s.key IS UNIQUE",
             "CREATE INDEX file_score IF NOT EXISTS FOR (f:File) ON (f.load_bearing_score)",
+            vector_index,
         ]
         with self.driver.session() as session:
             for statement in statements:
@@ -182,6 +191,71 @@ class Neo4jStore:
             )
             return {"nodes": node_rows, "edges": [dict(record) for record in edges]}
 
+    def file_paths(self, repo_path: str) -> list[str]:
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                MATCH (r:Repository {root_path: $repo_path})-[:CONTAINS]->(f:File)
+                RETURN f.path AS path
+                ORDER BY f.load_bearing_score DESC, f.path
+                """,
+                repo_path=repo_path,
+            )
+            return [record["path"] for record in result]
+
+    def upsert_file_summary(
+        self,
+        repo_path: str,
+        file_path: str,
+        summary_text: str,
+        embedding: list[float] | None,
+        model: str,
+        provider: str,
+    ) -> None:
+        key = f"{repo_path}:{file_path}"
+        with self.driver.session() as session:
+            session.run(
+                """
+                MATCH (r:Repository {root_path: $repo_path})-[:CONTAINS]->(f:File {path: $file_path})
+                MERGE (s:Summary {key: $key})
+                SET s.text = $text,
+                    s.model = $model,
+                    s.provider = $provider,
+                    s.repo_path = $repo_path,
+                    s.file_path = $file_path,
+                    s.updated_at = datetime(),
+                    s.embedding = $embedding
+                MERGE (f)-[:SUMMARIZES]->(s)
+                """,
+                repo_path=repo_path,
+                file_path=file_path,
+                key=key,
+                text=summary_text,
+                model=model,
+                provider=provider,
+                embedding=embedding,
+            )
+
+    def semantic_search(
+        self, embedding: list[float], limit: int = 6, repo_path: str | None = None
+    ) -> list[dict]:
+        if not embedding:
+            return []
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                CALL db.index.vector.queryNodes('summary_embedding', $limit, $embedding)
+                YIELD node, score
+                WHERE $repo_path IS NULL OR node.repo_path = $repo_path
+                RETURN node.file_path AS path, node.text AS summary, score
+                ORDER BY score DESC
+                """,
+                embedding=embedding,
+                limit=limit,
+                repo_path=repo_path,
+            )
+            return [dict(record) for record in result]
+
     def impact_for_file(
         self, path: str, depth: int = 3, repo_path: str | None = None
     ) -> dict:
@@ -217,6 +291,38 @@ class Neo4jStore:
                 "direct_dependents": direct["direct_dependents"] if direct else [],
                 "transitive_dependents": [dict(record) for record in transitive],
             }
+
+    def file_detail(self, path: str, repo_path: str | None = None) -> dict:
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                MATCH (r:Repository)-[:CONTAINS]->(f:File {path: $path})
+                WHERE $repo_path IS NULL OR r.root_path = $repo_path
+                OPTIONAL MATCH (f)-[:DEFINES]->(s:Symbol)
+                OPTIONAL MATCH (f)-[out:IMPORTS]->(imported:File)
+                OPTIONAL MATCH (dependent:File)-[:IMPORTS]->(f)
+                OPTIONAL MATCH (f)-[:DEPENDS_ON]->(dep:ExternalDependency)
+                OPTIONAL MATCH (f)-[:SUMMARIZES]->(sum:Summary)
+                RETURN f.path AS path, f.language AS language, f.loc AS loc,
+                       f.complexity AS complexity, f.churn_count AS churn_count,
+                       f.last_modified AS last_modified,
+                       f.load_bearing_score AS load_bearing_score,
+                       collect(DISTINCT {name: s.name, kind: s.kind,
+                               signature: s.signature, start_line: s.start_line,
+                               end_line: s.end_line}) AS symbols,
+                       collect(DISTINCT imported.path) AS imports,
+                       collect(DISTINCT dependent.path) AS dependents,
+                       collect(DISTINCT dep.name) AS external_deps,
+                       head(collect(DISTINCT sum.text)) AS summary
+                """,
+                path=path,
+                repo_path=repo_path,
+            ).single()
+            if not result:
+                return {}
+            data = dict(result)
+            data["symbols"] = [s for s in data["symbols"] if s.get("name")]
+            return data
 
     def search_files(
         self, query: str, limit: int = 8, repo_path: str | None = None

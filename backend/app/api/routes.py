@@ -1,8 +1,12 @@
 from fastapi import APIRouter, HTTPException
 
 from app.indexing.scanner import UnsafeRepositoryPath, scan_repository
-from app.models.graph import ImpactRequest, QueryRequest, ScanRequest
-from app.services.analysis import answer_architecture_question, explain_impact
+from app.models.graph import ImpactRequest, QueryRequest, ScanRequest, SummaryRequest
+from app.services.analysis import (
+    answer_architecture_question,
+    explain_impact,
+    generate_summaries_for_repo,
+)
 from app.services.neo4j_store import neo4j_store
 
 router = APIRouter()
@@ -20,7 +24,7 @@ def health() -> dict:
 
 
 @router.post("/scan")
-def scan(request: ScanRequest) -> dict:
+async def scan(request: ScanRequest) -> dict:
     try:
         graph = scan_repository(request.path)
     except UnsafeRepositoryPath as exc:
@@ -29,6 +33,9 @@ def scan(request: ScanRequest) -> dict:
     with neo4j_store() as store:
         store.upsert_repository_graph(graph)
         overview = store.overview(repo_path=graph.root_path)
+        summary_status = None
+        if request.summarize:
+            summary_status = await generate_summaries_for_repo(store, graph.root_path)
     return {
         "repository": graph.name,
         "root_path": graph.root_path,
@@ -36,6 +43,7 @@ def scan(request: ScanRequest) -> dict:
         "symbols": len(graph.symbols),
         "imports": len(graph.imports),
         "overview": overview,
+        "summaries": summary_status,
     }
 
 
@@ -70,3 +78,21 @@ async def query(request: QueryRequest) -> dict:
 async def impact(request: ImpactRequest) -> dict:
     with neo4j_store() as store:
         return await explain_impact(store, request.path, request.depth, request.repo_path)
+
+
+@router.get("/file-detail")
+def file_detail(path: str, repo_path: str | None = None) -> dict:
+    with neo4j_store() as store:
+        detail = store.file_detail(path, repo_path=repo_path)
+        if not detail:
+            raise HTTPException(status_code=404, detail="File not found in graph")
+        return detail
+
+
+@router.post("/summaries")
+async def summaries(request: SummaryRequest) -> dict:
+    with neo4j_store() as store:
+        status = await generate_summaries_for_repo(
+            store, request.repo_path, max_files=request.max_files
+        )
+    return {"status": status}

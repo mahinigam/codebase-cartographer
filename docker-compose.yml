@@ -16,6 +16,37 @@ services:
       - neo4j_data:/data
       - neo4j_logs:/logs
 
+  backend:
+    build:
+      context: ./backend
+    container_name: codebase-cartographer-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      ALLOWED_REPO_ROOTS: /workspace
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    volumes:
+      - ./:/workspace:ro
+    depends_on:
+      - neo4j
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: codebase-cartographer-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE: http://backend:8000
+      VITE_DEFAULT_REPO: /workspace
+    depends_on:
+      - backend
+
 volumes:
   neo4j_data:
   neo4j_logs:

@@ -19,8 +19,10 @@ Large codebases are hard to change safely because their real architecture is usu
 - Frontend: React + Vite
 - Backend: FastAPI
 - Graph database: Neo4j Community
-- Static analysis: Python AST, JS/TS structural extraction, Tree-sitter-ready design
+- Static analysis: Python AST + Tree-sitter for JS/TS
 - AI: Gemini free API primary, Ollama `qwen2.5-coder:7b` fallback
+- Embeddings: Gemini `text-embedding-004` primary, Ollama `nomic-embed-text` fallback
+- Vector search: Neo4j vector index
 - Git intelligence: local Git history mining
 - Tests: pytest + Vitest
 
@@ -60,6 +62,24 @@ npm run dev
 
 Open `http://localhost:5173`.
 
+## Docker Compose (All Services)
+
+Run everything locally in one command:
+
+```bash
+docker compose up --build
+```
+
+Notes:
+
+- The backend container mounts the repository at `/workspace` for scanning.
+- Ollama must be running on the host; Docker uses `http://host.docker.internal:11434`.
+
+## Summaries + Semantic Search
+
+After scanning, generate file summaries and embeddings from the UI using "Generate Summaries".
+These summaries are stored in Neo4j with a vector index for semantic retrieval.
+
 ## Security Notes
 
 - API keys are read from environment variables only.
@@ -67,7 +87,9 @@ Open `http://localhost:5173`.
 - `.env` files are ignored by Git.
 - The app indexes local source files and does not upload code unless an external LLM provider is enabled.
 
-## Challenge Positioning
+## Frontend Env Overrides
 
-Built for Solution Challenge 2026 - Build with AI: a free-first, privacy-conscious AI tool that uses Google Gemini as the reasoning layer over deterministic software structure.
+- `VITE_API_BASE` can point the UI to a remote backend (default: same origin).
+- `VITE_DEFAULT_REPO` can prefill the repository path input.
+
 

@@ -6,17 +6,18 @@ Codebase Cartographer is built around structural forensics: deterministic code s
 flowchart TD
     A["Local repository"] --> B["Scanner"]
     B --> C["Python AST parser"]
-    B --> D["JS/TS structural parser"]
+    B --> D["Tree-sitter JS/TS parser"]
     B --> E["Git history miner"]
     C --> F["Risk scorer"]
     D --> F
     E --> F
     F --> G["Neo4j knowledge graph"]
-    G --> H["Forensics dashboard"]
-    G --> I["Impact analysis"]
-    G --> J["Graph retrieval"]
-    J --> K["Gemini primary / Ollama fallback"]
-    K --> L["Cited architectural answer"]
+    G --> H["File summaries + embeddings"]
+    G --> I["Forensics dashboard"]
+    G --> J["Impact analysis"]
+    G --> K["Graph + vector retrieval"]
+    K --> L["Gemini primary / Ollama fallback"]
+    L --> M["Cited architectural answer"]
 ```
 
 ## Knowledge Graph
@@ -27,6 +28,7 @@ Core node types:
 - `File`
 - `Symbol`
 - `ExternalDependency`
+- `Summary`
 
 Core relationships:
 
@@ -34,6 +36,7 @@ Core relationships:
 - `File DEFINES Symbol`
 - `File IMPORTS File`
 - `File DEPENDS_ON ExternalDependency`
+- `File SUMMARIZES Summary`
 
 ## Risk Model
 
@@ -48,7 +51,7 @@ The score is explainable and intentionally deterministic. AI may describe the ri
 
 ## AI Strategy
 
-Gemini is the primary reasoning layer for challenge alignment with Google AI tools. Ollama is a local fallback for free-first demos and private codebases.
+Gemini is the primary reasoning layer for its strong code understanding and free-tier availability. Ollama is a local fallback for offline use and private codebases.
 
 No API key is stored in source control. External AI providers should be disabled when analyzing confidential repositories.
 

@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "codebase-cartographer-backend"
 version = "0.1.0"
@@ -12,6 +16,8 @@ dependencies = [
   "httpx>=0.27.0",
   "GitPython>=3.1.43",
   "python-dotenv>=1.0.1",
+  "tree-sitter>=0.22.0",
+  "tree-sitter-languages>=1.10.0",
 ]
 
 [project.optional-dependencies]

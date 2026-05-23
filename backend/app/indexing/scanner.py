@@ -39,7 +39,7 @@ def scan_repository(path_text: str) -> RepositoryGraph:
         if language == "python":
             symbols, imports, complexity = parse_python(path, relative, source)
         elif language in {"javascript", "typescript"}:
-            symbols, imports, complexity = parse_js_like(path, relative, source)
+            symbols, imports, complexity = parse_js_like(path, relative, source, language)
         else:
             symbols, imports, complexity = [], [], 0
 
