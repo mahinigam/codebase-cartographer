@@ -17,6 +17,7 @@ Large codebases are hard to change safely because their real architecture is usu
 ## Features
 
 - **Knowledge graph** — Files, symbols, imports, and external dependencies stored in Neo4j with full relationship modeling
+- **Incremental rescans** — Reuses unchanged file fingerprints from Neo4j to avoid reparsing stable files
 - **Risk scoring** — Deterministic load-bearing score combining fan-in, complexity, churn, and fan-out
 - **AI Q&A** — Ask architecture questions and get answers grounded in graph + vector evidence
 - **Impact analysis** — Trace direct and transitive dependents of any file to assess refactor risk
@@ -118,6 +119,8 @@ Notes:
 
 - API keys are read from environment variables only.
 - Repository paths are constrained by `ALLOWED_REPO_ROOTS` when configured.
+- Set `API_TOKEN` to require `Authorization: Bearer ...` or `X-API-Key` on API requests.
+- `SCAN_MAX_FILES` and `SCAN_RATE_LIMIT_PER_MINUTE` cap expensive scan/summarization requests.
 - `.env` files are ignored by Git.
 - The app indexes local source files and does not upload code unless an external LLM provider is enabled.
 - When AI summaries are enabled, up to about 4,000 characters of each file's source (up to 120 files per scan by default) are sent to Google's Gemini API, or to a local Ollama model if Gemini is unavailable. Turn summaries off, or use only the Ollama fallback, for proprietary code you do not want leaving the machine.
@@ -137,6 +140,9 @@ See `.env.example` for the full list. Key settings:
 | `NEO4J_PASSWORD` | — | Neo4j database password |
 | `ALLOWED_REPO_ROOTS` | — | Comma-separated allowed scan paths |
 | `CORS_ORIGINS` | `http://localhost:5173` | Allowed CORS origins |
+| `API_TOKEN` | — | Optional API token for hosted/shared deployments |
+| `SCAN_MAX_FILES` | `10000` | Maximum supported source files per scan; set `0` to disable |
+| `SCAN_RATE_LIMIT_PER_MINUTE` | `6` | Per-client scan/summaries request limit; set `0` to disable |
 
 ### Frontend Overrides
 

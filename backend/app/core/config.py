@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     embedding_dimensions: int = 768
     summary_max_files: int = 120
     summary_max_chars: int = 4000
+    scan_max_files: int = 10000
+    scan_rate_limit_per_minute: int = 6
+    api_token: str | None = Field(default=None, repr=False)
 
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_username: str = "neo4j"

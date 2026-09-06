@@ -78,6 +78,7 @@ def test_write_graph_uses_unwind_batches_and_stale_file_cleanup() -> None:
 
     file_batch = next(payload["files"] for payload in params if "files" in payload)
     assert {row["key"] for row in file_batch} == {"/repo/demo:src/a.ts", "/repo/demo:src/b.ts"}
+    assert {"size_bytes", "mtime_ns", "content_hash"} <= set(file_batch[0]["props"])
     symbol_batch = next(payload["symbols"] for payload in params if "symbols" in payload)
     assert symbol_batch[0]["id"] == "/repo/demo:src/a.ts:run:1"
     assert symbol_batch[0]["props"]["local_id"] == "src/a.ts:run:1"

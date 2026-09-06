@@ -27,6 +27,7 @@ export type LoadBearingFile = {
 export type GraphData = {
   nodes: Array<{ id: string; label: string; score: number; labels: string[] }>;
   edges: Array<{ source: string; target: string; type: string }>;
+  clusters?: Array<{ name: string; files: number; avg_score: number; max_score: number }>;
   total_files?: number;
   total_edges?: number;
   truncated?: boolean;
@@ -67,10 +68,10 @@ export type FileDetail = {
   summary: string | null;
 };
 
-export async function scanRepo(path: string, summarize = false) {
+export async function scanRepo(path: string, summarize = false, incremental = true) {
   return request("/api/scan", {
     method: "POST",
-    body: JSON.stringify({ path, summarize })
+    body: JSON.stringify({ path, summarize, incremental })
   });
 }
 
@@ -135,10 +136,12 @@ export function withQuery(
 
 async function request(path: string, init?: RequestInit) {
   const base = process.env.NEXT_PUBLIC_API_BASE ?? "";
+  const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
   const response = await fetch(`${base}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...(apiToken ? { "X-API-Key": apiToken } : {}),
       ...(init?.headers ?? {})
     }
   });

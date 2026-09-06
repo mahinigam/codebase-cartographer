@@ -5,12 +5,14 @@ Codebase Cartographer is built around structural forensics: deterministic code s
 ```mermaid
 flowchart TD
     A["Local repository"] --> B["Scanner"]
-    B --> C["Python AST parser"]
-    B --> D["Tree-sitter JS/TS parser"]
-    B --> E["Git history miner"]
-    C --> F["Risk scorer"]
-    D --> F
-    E --> F
+B --> C["Python AST parser"]
+B --> D["Tree-sitter JS/TS parser"]
+B --> E["Git history miner"]
+B --> N["Incremental scan cache"]
+C --> F["Risk scorer"]
+D --> F
+E --> F
+N --> F
     F --> G["Neo4j knowledge graph"]
     G --> H["File summaries + embeddings"]
     G --> I["Forensics dashboard"]
@@ -59,7 +61,10 @@ No API key is stored in source control.
 
 ## Persistence
 
-Repository graphs are written to Neo4j in batched `UNWIND` statements. Each scan still rebuilds symbols and dependency edges for the repository, and removes File nodes that no longer exist on disk.
+Repository graphs are written to Neo4j in batched `UNWIND` statements. File nodes include size, mtime, and SHA-256 content fingerprints. On incremental rescans, unchanged files reuse their previous symbols and import edges from Neo4j; changed files are reparsed and the repository-level score is recomputed across the full graph. Removed files are deleted during upsert.
 
-The architecture graph view returns the highest load-bearing files first, with a hard cap (400 nodes / 2,000 edges) so the UI stays usable on large repositories. Truncation is reported to the client so the missing remainder is visible.
+The architecture graph view returns the highest load-bearing files first, with a hard cap (400 nodes / 2,000 edges) so the UI stays usable on large repositories. Truncation is reported to the client, along with top-level directory clusters that provide level-of-detail context for the hidden remainder.
 
+## API Guardrails
+
+Local development stays open by default. For hosted or shared deployments, set `API_TOKEN` to require either a bearer token or `X-API-Key` on API requests. Expensive scan and summary endpoints are also protected by `SCAN_MAX_FILES` and `SCAN_RATE_LIMIT_PER_MINUTE`.

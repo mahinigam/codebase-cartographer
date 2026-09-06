@@ -61,7 +61,7 @@ def _parse_with_tree_sitter(
 ) -> tuple[list[CodeSymbol], list[ImportEdge], int]:
     language_name = _language_name(path, language)
     parser = Parser()
-    parser.set_language(get_language(language_name))
+    _configure_parser_language(parser, get_language(language_name))
     source_bytes = source.encode("utf-8", errors="ignore")
     tree = parser.parse(source_bytes)
 
@@ -129,6 +129,13 @@ def _parse_with_tree_sitter(
 
     walk(tree.root_node)
     return symbols, imports, complexity
+
+
+def _configure_parser_language(parser, tree_sitter_language) -> None:
+    if hasattr(parser, "language"):
+        parser.language = tree_sitter_language
+    else:
+        parser.set_language(tree_sitter_language)
 
 
 def _language_name(path: Path, language: str | None) -> str:

@@ -1,8 +1,17 @@
 import logging
+from collections import defaultdict, deque
+from time import monotonic
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 
-from app.indexing.scanner import UnsafeRepositoryPath, scan_repository
+from app.core.config import settings
+from app.indexing.scanner import (
+    RepositoryTooLarge,
+    UnsafeRepositoryPath,
+    scan_repository,
+    validate_repo_path,
+)
 from app.models.graph import ImpactRequest, QueryRequest, ScanRequest, SummaryRequest
 from app.services.analysis import (
     answer_architecture_question,
@@ -17,8 +26,44 @@ from app.services.neo4j_store import (
     neo4j_store,
 )
 
-router = APIRouter()
 logger = logging.getLogger(__name__)
+_rate_windows: dict[str, deque[float]] = defaultdict(deque)
+
+
+def require_api_token(
+    authorization: Annotated[str | None, Header()] = None,
+    x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
+) -> None:
+    if not settings.api_token:
+        return
+    bearer = ""
+    if authorization and authorization.lower().startswith("bearer "):
+        bearer = authorization[7:].strip()
+    if x_api_key != settings.api_token and bearer != settings.api_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Valid API token required.",
+        )
+
+
+router = APIRouter(dependencies=[Depends(require_api_token)])
+
+
+def _enforce_rate_limit(request: Request) -> None:
+    limit = settings.scan_rate_limit_per_minute
+    if limit <= 0:
+        return
+    client_host = request.client.host if request.client else "local"
+    now = monotonic()
+    window = _rate_windows[client_host]
+    while window and now - window[0] > 60:
+        window.popleft()
+    if len(window) >= limit:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Scan rate limit exceeded: {limit} requests per minute.",
+        )
+    window.append(now)
 
 
 @router.get("/health")
@@ -33,13 +78,19 @@ def health() -> dict:
 
 
 @router.post("/scan")
-async def scan(request: ScanRequest) -> dict:
+async def scan(request: ScanRequest, http_request: Request) -> dict:
+    _enforce_rate_limit(http_request)
     try:
-        graph = scan_repository(request.path)
+        root = validate_repo_path(request.path)
     except UnsafeRepositoryPath as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     with neo4j_store() as store:
+        previous_files = store.scan_cache(str(root)) if request.incremental else None
+        try:
+            graph = scan_repository(str(root), previous_files=previous_files)
+        except (UnsafeRepositoryPath, RepositoryTooLarge) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         store.upsert_repository_graph(graph)
         overview = store.overview(repo_path=graph.root_path)
         summary_status = None
@@ -107,7 +158,8 @@ def file_detail(path: str, repo_path: str | None = None) -> dict:
 
 
 @router.post("/summaries")
-async def summaries(request: SummaryRequest) -> dict:
+async def summaries(request: SummaryRequest, http_request: Request) -> dict:
+    _enforce_rate_limit(http_request)
     with neo4j_store() as store:
         status = await generate_summaries_for_repo(
             store, request.repo_path, max_files=request.max_files

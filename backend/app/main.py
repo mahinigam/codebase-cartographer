@@ -16,11 +16,10 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_credentials=False,
         allow_methods=["GET", "POST"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_headers=["Authorization", "Content-Type", "X-API-Key"],
     )
     app.include_router(router, prefix="/api")
     return app
 
 
 app = create_app()
-

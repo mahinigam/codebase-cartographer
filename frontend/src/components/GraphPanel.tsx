@@ -94,6 +94,16 @@ export function GraphPanel({ graph, onNodeClick, onExpand }: Props) {
           load more of the graph.
         </p>
       ) : null}
+      {truncated && graph.clusters?.length ? (
+        <div className="graphClusters" aria-label="Repository clusters">
+          {graph.clusters.slice(0, 6).map((cluster) => (
+            <div className="graphCluster" key={cluster.name}>
+              <span>{cluster.name}</span>
+              <strong>{cluster.files}</strong>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className="graphViewport">
         <div
           className="graphCanvas"

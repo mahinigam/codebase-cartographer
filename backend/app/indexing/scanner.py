@@ -1,3 +1,4 @@
+import hashlib
 import os
 from pathlib import Path
 
@@ -6,10 +7,14 @@ from app.indexing.discovery import language_for, safe_relative, source_files
 from app.indexing.git_history import file_churn
 from app.indexing.js_parser import parse_js_like
 from app.indexing.python_parser import parse_python
-from app.models.graph import CodeFile, RepositoryGraph
+from app.models.graph import CachedFile, CodeFile, RepositoryGraph
 
 
 class UnsafeRepositoryPath(ValueError):
+    pass
+
+
+class RepositoryTooLarge(ValueError):
     pass
 
 
@@ -26,15 +31,39 @@ def validate_repo_path(path_text: str) -> Path:
     return root
 
 
-def scan_repository(path_text: str) -> RepositoryGraph:
+def scan_repository(
+    path_text: str,
+    previous_files: dict[str, CachedFile] | None = None,
+    max_files: int | None = None,
+) -> RepositoryGraph:
     root = validate_repo_path(path_text)
     churn = file_churn(root)
     graph = RepositoryGraph(root_path=str(root), name=root.name)
+    paths = source_files(root)
+    file_limit = settings.scan_max_files if max_files is None else max_files
+    if file_limit > 0 and len(paths) > file_limit:
+        raise RepositoryTooLarge(
+            f"Repository has {len(paths)} supported source files; limit is {file_limit}."
+        )
 
-    for path in source_files(root):
+    for path in paths:
         relative = safe_relative(path, root)
-        source = path.read_text(encoding="utf-8", errors="ignore")
+        stat = path.stat()
         language = language_for(path)
+        cached = previous_files.get(relative) if previous_files else None
+        source: str | None = None
+        content_hash: str | None = None
+
+        if cached and _same_stat_fingerprint(cached.file, stat):
+            _append_cached_file(graph, cached, churn.get(relative, {}), stat)
+            continue
+
+        source = path.read_text(encoding="utf-8", errors="ignore")
+        content_hash = _content_hash(source)
+        if cached and cached.file.content_hash == content_hash:
+            _append_cached_file(graph, cached, churn.get(relative, {}), stat, content_hash)
+            continue
+
         loc = len([line for line in source.splitlines() if line.strip()])
 
         if language == "python":
@@ -50,6 +79,9 @@ def scan_repository(path_text: str) -> RepositoryGraph:
                 path=relative,
                 language=language,
                 loc=loc,
+                size_bytes=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+                content_hash=content_hash,
                 churn_count=int(history.get("count", 0)),
                 last_modified=history.get("last_modified"),
                 complexity=complexity,
@@ -61,6 +93,39 @@ def scan_repository(path_text: str) -> RepositoryGraph:
     _resolve_imports(graph)
     _score_load_bearing_files(graph)
     return graph
+
+
+def _same_stat_fingerprint(file: CodeFile, stat: os.stat_result) -> bool:
+    return (
+        file.content_hash is not None
+        and file.size_bytes == stat.st_size
+        and file.mtime_ns == stat.st_mtime_ns
+    )
+
+
+def _content_hash(source: str) -> str:
+    return hashlib.sha256(source.encode("utf-8", errors="ignore")).hexdigest()
+
+
+def _append_cached_file(
+    graph: RepositoryGraph,
+    cached: CachedFile,
+    history: dict[str, str | int],
+    stat: os.stat_result,
+    content_hash: str | None = None,
+) -> None:
+    file = cached.file.model_copy(
+        update={
+            "size_bytes": stat.st_size,
+            "mtime_ns": stat.st_mtime_ns,
+            "content_hash": content_hash or cached.file.content_hash,
+            "churn_count": int(history.get("count", cached.file.churn_count)),
+            "last_modified": history.get("last_modified", cached.file.last_modified),
+        }
+    )
+    graph.files.append(file)
+    graph.symbols.extend(cached.symbols)
+    graph.imports.extend(cached.imports)
 
 
 def _resolve_imports(graph: RepositoryGraph) -> None:

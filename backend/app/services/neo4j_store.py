@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from neo4j import GraphDatabase
 
 from app.core.config import settings
-from app.models.graph import CodeFile, CodeSymbol, RepositoryGraph
+from app.models.graph import CachedFile, CodeFile, CodeSymbol, ImportEdge, RepositoryGraph
 
 WRITE_BATCH_SIZE = 250
 GRAPH_DEFAULT_NODE_LIMIT = 80
@@ -266,12 +266,111 @@ class Neo4jStore:
             return {
                 "nodes": node_rows,
                 "edges": [dict(record) for record in edges],
+                "clusters": self._graph_clusters(session, repo_path),
                 "total_files": total_files,
                 "total_edges": total_edges,
                 "truncated": total_files > len(node_rows) or total_edges > edge_cap,
                 "node_limit": node_limit,
                 "edge_limit": edge_cap,
             }
+
+    def _graph_clusters(self, session, repo_path: str | None = None) -> list[dict]:
+        result = session.run(
+            """
+            MATCH (r:Repository)-[:CONTAINS]->(f:File)
+            WHERE $repo_path IS NULL OR r.root_path = $repo_path
+            WITH CASE
+                WHEN f.path CONTAINS "/" THEN split(f.path, "/")[0]
+                ELSE "(root)"
+            END AS name, f
+            RETURN name,
+                   count(f) AS files,
+                   coalesce(round(avg(f.load_bearing_score), 2), 0) AS avg_score,
+                   coalesce(max(f.load_bearing_score), 0) AS max_score
+            ORDER BY max_score DESC, files DESC, name
+            LIMIT 25
+            """,
+            repo_path=repo_path,
+        )
+        return [dict(record) for record in result]
+
+    def scan_cache(self, repo_path: str) -> dict[str, CachedFile]:
+        with self.driver.session() as session:
+            files = session.run(
+                """
+                MATCH (r:Repository {root_path: $repo_path})-[:CONTAINS]->(f:File)
+                RETURN f.path AS path,
+                       f.language AS language,
+                       coalesce(f.loc, 0) AS loc,
+                       coalesce(f.size_bytes, 0) AS size_bytes,
+                       coalesce(f.mtime_ns, 0) AS mtime_ns,
+                       f.content_hash AS content_hash,
+                       coalesce(f.churn_count, 0) AS churn_count,
+                       f.last_modified AS last_modified,
+                       coalesce(f.complexity, 0) AS complexity,
+                       coalesce(f.load_bearing_score, 0) AS load_bearing_score
+                """,
+                repo_path=repo_path,
+            )
+            cache = {
+                record["path"]: CachedFile(
+                    file=CodeFile(**dict(record)),
+                    symbols=[],
+                    imports=[],
+                )
+                for record in files
+            }
+            symbols = session.run(
+                """
+                MATCH (r:Repository {root_path: $repo_path})-[:CONTAINS]->(f:File)
+                MATCH (f)-[:DEFINES]->(s:Symbol)
+                RETURN f.path AS file_path,
+                       coalesce(s.local_id, s.id) AS id,
+                       s.name AS name,
+                       s.kind AS kind,
+                       s.signature AS signature,
+                       coalesce(s.start_line, 0) AS start_line,
+                       coalesce(s.end_line, 0) AS end_line,
+                       coalesce(s.complexity, 0) AS complexity
+                """,
+                repo_path=repo_path,
+            )
+            for record in symbols:
+                file_path = record["file_path"]
+                if file_path in cache:
+                    cache[file_path].symbols.append(CodeSymbol(**dict(record)))
+            internal_imports = session.run(
+                """
+                MATCH (r:Repository {root_path: $repo_path})-[:CONTAINS]->(source:File)
+                MATCH (source)-[rel:IMPORTS]->(target:File)
+                WHERE target.root_path = $repo_path
+                RETURN source.path AS source_path,
+                       rel.target AS target,
+                       target.path AS target_path,
+                       rel.line_number AS line_number
+                """,
+                repo_path=repo_path,
+            )
+            for record in internal_imports:
+                source_path = record["source_path"]
+                if source_path in cache:
+                    cache[source_path].imports.append(ImportEdge(**dict(record)))
+            external_imports = session.run(
+                """
+                MATCH (r:Repository {root_path: $repo_path})-[:CONTAINS]->(source:File)
+                MATCH (source)-[:DEPENDS_ON]->(dep:ExternalDependency)
+                RETURN source.path AS source_path,
+                       dep.name AS target,
+                       null AS target_path,
+                       null AS line_number
+                """,
+                repo_path=repo_path,
+            )
+            for record in external_imports:
+                source_path = record["source_path"]
+                if source_path in cache:
+                    cache[source_path].imports.append(ImportEdge(**dict(record)))
+            return cache
 
     def file_paths(self, repo_path: str) -> list[str]:
         with self.driver.session() as session:
@@ -495,6 +594,9 @@ def _file_props(file: CodeFile, root_path: str) -> dict:
         "path": file.path,
         "language": file.language,
         "loc": file.loc,
+        "size_bytes": file.size_bytes,
+        "mtime_ns": file.mtime_ns,
+        "content_hash": file.content_hash,
         "churn_count": file.churn_count,
         "last_modified": file.last_modified,
         "complexity": file.complexity,

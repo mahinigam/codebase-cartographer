@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from pydantic import BaseModel, Field
 
 
@@ -5,6 +7,9 @@ class CodeFile(BaseModel):
     path: str
     language: str
     loc: int
+    size_bytes: int = 0
+    mtime_ns: int = 0
+    content_hash: str | None = None
     churn_count: int = 0
     last_modified: str | None = None
     complexity: int = 0
@@ -29,6 +34,13 @@ class ImportEdge(BaseModel):
     line_number: int | None = None
 
 
+@dataclass(frozen=True)
+class CachedFile:
+    file: CodeFile
+    symbols: list[CodeSymbol]
+    imports: list[ImportEdge]
+
+
 class RepositoryGraph(BaseModel):
     root_path: str
     name: str
@@ -40,6 +52,7 @@ class RepositoryGraph(BaseModel):
 class ScanRequest(BaseModel):
     path: str
     summarize: bool = False
+    incremental: bool = True
 
 
 class QueryRequest(BaseModel):
