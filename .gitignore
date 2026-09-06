@@ -19,3 +19,9 @@ coverage/
 data/
 tmp/
 *.log
+
+# Generated output and scratch files
+*_output*.json
+*_output.json
+scan_output*.json
+query_output*.json
