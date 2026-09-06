@@ -209,51 +209,69 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <main className="appShell">
-      <HeroSection
-        repoPath={repoPath}
-        onRepoPathChange={setRepoPath}
-        onScan={handleScan}
-        loading={loadingScan}
-      />
-      <StatusBand status={status} summaryStatus={summaryStatus} />
-      <RepoBand
-        activeRepoPath={activeRepoPath}
-        repositories={repositories}
-        summarizeOnScan={summarizeOnScan}
-        onRepoChange={handleRepoChange}
-        onSummarizeOnScanChange={setSummarizeOnScan}
-        onGenerateSummaries={handleSummaries}
-        loadingSummaries={loadingSummaries}
-      />
-      <MetricsRow overview={overview} riskyFileCount={riskyFiles.length} />
+    <main className="dashboardShell">
+      <aside className="sidebar">
+        <div className="sidebarHeader">
+          <h1>Cartographer</h1>
+        </div>
+        
+        <div className="sidebarScroll">
+          <HeroSection
+            repoPath={repoPath}
+            onRepoPathChange={setRepoPath}
+            onScan={handleScan}
+            loading={loadingScan}
+          />
+          <RepoBand
+            activeRepoPath={activeRepoPath}
+            repositories={repositories}
+            summarizeOnScan={summarizeOnScan}
+            onRepoChange={handleRepoChange}
+            onSummarizeOnScanChange={setSummarizeOnScan}
+            onGenerateSummaries={handleSummaries}
+            loadingSummaries={loadingSummaries}
+          />
+        </div>
+        
+        <div className="sidebarFooter">
+          <StatusBand status={status} summaryStatus={summaryStatus} />
+        </div>
+      </aside>
 
-      <section className="workbench">
-        <GraphPanel
-          graph={graph}
-          onNodeClick={handleNodeClick}
-          onExpand={handleExpandGraph}
-        />
-        <LoadBearingFiles files={riskyFiles} onFileClick={handleNodeClick} />
-      </section>
+      <div className="mainContent">
+        <header className="topbar">
+          <MetricsRow overview={overview} riskyFileCount={riskyFiles.length} />
+        </header>
 
-      <section className="aiGrid">
-        <AskPanel
-          question={question}
-          onQuestionChange={setQuestion}
-          onAsk={handleAsk}
-          answer={answer}
-          semanticMatches={semanticMatches}
-          loading={loadingAsk}
-        />
-        <ImpactPanel
-          selectedFile={selectedFile}
-          onSelectedFileChange={setSelectedFile}
-          onTrace={() => handleImpact()}
-          impact={impact}
-          loading={loadingImpact}
-        />
-      </section>
+        <div className="contentScroll">
+          <section className="workbench">
+            <GraphPanel
+              graph={graph}
+              onNodeClick={handleNodeClick}
+              onExpand={handleExpandGraph}
+            />
+            <LoadBearingFiles files={riskyFiles} onFileClick={handleNodeClick} />
+          </section>
+
+          <section className="aiGrid">
+            <AskPanel
+              question={question}
+              onQuestionChange={setQuestion}
+              onAsk={handleAsk}
+              answer={answer}
+              semanticMatches={semanticMatches}
+              loading={loadingAsk}
+            />
+            <ImpactPanel
+              selectedFile={selectedFile}
+              onSelectedFileChange={setSelectedFile}
+              onTrace={() => handleImpact()}
+              impact={impact}
+              loading={loadingImpact}
+            />
+          </section>
+        </div>
+      </div>
 
       <NodeDetailDrawer
         filePath={drawerFile}

@@ -17,12 +17,7 @@ export function HeroSection({
   return (
     <section className="hero">
       <div>
-        <p className="eyebrow">Structural Forensics</p>
-        <h1>Codebase Cartographer</h1>
-        <p className="lede">
-          Map legacy code into a Neo4j knowledge graph, detect load-bearing
-          files, and ask architecture questions with evidence.
-        </p>
+        <p className="eyebrow">Index Workspace</p>
       </div>
       <div className="scanBar">
         <input
