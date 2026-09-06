@@ -1,5 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
 import dagre from "@dagrejs/dagre";
+import ReactFlow, { Background, MiniMap, Node, Edge, Handle, Position } from "reactflow";
+import "reactflow/dist/style.css";
 import { GraphData } from "../lib/api";
 
 type Props = {
@@ -8,23 +10,21 @@ type Props = {
   onExpand?: () => void;
 };
 
-type GraphNode = {
-  id: string;
-  label: string;
-  score: number;
-  position: { x: number; y: number };
+function CartographerNode({ data }: { data: { label: string; score: number } }) {
+  return (
+    <div className={data.score > 50 ? "graphNode isRisky" : "graphNode"}>
+      <Handle type="target" position={Position.Top} style={{ visibility: 'hidden' }} />
+      {data.label}
+      <Handle type="source" position={Position.Bottom} style={{ visibility: 'hidden' }} />
+    </div>
+  );
+}
+
+const nodeTypes = {
+  cartographerNode: CartographerNode,
 };
 
-type GraphEdge = {
-  id: string;
-  source: string;
-  target: string;
-};
-
-function layoutWithDagre(
-  nodes: GraphNode[],
-  edges: GraphEdge[]
-): GraphNode[] {
+function layoutWithDagre(nodes: Node[], edges: Edge[]): Node[] {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 90 });
@@ -44,112 +44,67 @@ function layoutWithDagre(
 }
 
 export function GraphPanel({ graph, onNodeClick, onExpand }: Props) {
-  const flow = useMemo(() => {
-    const rawNodes: GraphNode[] = graph.nodes.map((node) => ({
+  const { nodes, edges } = useMemo(() => {
+    const rawNodes: Node[] = graph.nodes.map((node) => ({
       id: node.id,
-      label: node.label,
-      score: node.score,
+      type: "cartographerNode",
+      data: { label: node.label, score: node.score },
       position: { x: 0, y: 0 },
     }));
-    const rawEdges: GraphEdge[] = graph.edges.map((edge, i) => ({
+
+    const rawEdges: Edge[] = graph.edges.map((edge, i) => ({
       id: `${edge.source}-${edge.target}-${i}`,
       source: edge.source,
       target: edge.target,
+      animated: true,
+      style: { stroke: 'rgba(255, 255, 255, 0.15)', strokeWidth: 1.5 }
     }));
 
-    const laid = layoutWithDagre(rawNodes, rawEdges);
-    const maxX = Math.max(0, ...laid.map((node) => node.position.x + 220));
-    const maxY = Math.max(0, ...laid.map((node) => node.position.y + 70));
-    return { nodes: laid, edges: rawEdges, width: maxX + 40, height: maxY + 40 };
+    const laidNodes = layoutWithDagre(rawNodes, rawEdges);
+    return { nodes: laidNodes, edges: rawEdges };
   }, [graph]);
 
-  const nodesById = useMemo(
-    () => new Map(flow.nodes.map((node) => [node.id, node])),
-    [flow.nodes]
-  );
+  const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    onNodeClick(node.data.label);
+  }, [onNodeClick]);
 
-  const totalFiles = graph.total_files ?? flow.nodes.length;
+  const totalFiles = graph.total_files ?? nodes.length;
   const truncated = Boolean(graph.truncated);
 
   return (
     <div className="graphPanel">
-      <div className="panelHeader">
-        <h2>Architecture Graph</h2>
-        <div className="graphHeaderMeta">
-          <span>
-            {flow.nodes.length}
-            {totalFiles > flow.nodes.length ? ` of ${totalFiles}` : ""} files ·{" "}
-            {flow.edges.length} edges
-          </span>
-          {truncated && onExpand && (graph.node_limit ?? 80) < 400 ? (
-            <button type="button" className="ghostButton" onClick={onExpand}>
-              Show more
-            </button>
-          ) : null}
-        </div>
+      <div className="graphStatsOverlay">
+        <span>{nodes.length}{totalFiles > nodes.length ? ` of ${totalFiles}` : ""} files</span>
+        <span className="dotSeparator">·</span>
+        <span>{edges.length} edges</span>
+        {truncated && onExpand && (graph.node_limit ?? 80) < 400 && (
+           <button onClick={onExpand} className="ghostButton">Load more</button>
+        )}
       </div>
-      {truncated ? (
-        <p className="graphTruncationNote">
-          Showing the highest load-bearing files so the view stays usable. Expand to
-          load more of the graph.
-        </p>
-      ) : null}
-      {truncated && graph.clusters?.length ? (
-        <div className="graphClusters" aria-label="Repository clusters">
-          {graph.clusters.slice(0, 6).map((cluster) => (
-            <div className="graphCluster" key={cluster.name}>
-              <span>{cluster.name}</span>
-              <strong>{cluster.files}</strong>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      <div className="graphViewport">
-        <div
-          className="graphCanvas"
-          style={{ width: flow.width, height: flow.height }}
-        >
-          <svg
-            aria-hidden="true"
-            className="graphEdges"
-            width={flow.width}
-            height={flow.height}
-          >
-            {flow.edges.map((edge) => {
-              const source = nodesById.get(edge.source);
-              const target = nodesById.get(edge.target);
-              if (!source || !target) return null;
-              const x1 = source.position.x + 100;
-              const y1 = source.position.y + 50;
-              const x2 = target.position.x + 100;
-              const y2 = target.position.y;
-              return (
-                <line
-                  key={edge.id}
-                  x1={x1}
-                  y1={y1}
-                  x2={x2}
-                  y2={y2}
-                  vectorEffect="non-scaling-stroke"
-                />
-              );
-            })}
-          </svg>
-          {flow.nodes.map((node) => (
-            <button
-              key={node.id}
-              className={node.score > 50 ? "graphNode isRisky" : "graphNode"}
-              style={{
-                left: node.position.x,
-                top: node.position.y,
-              }}
-              onClick={() => onNodeClick(node.label)}
-            >
-              {node.label}
-            </button>
-          ))}
-        </div>
-      </div>
+
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        onNodeClick={handleNodeClick}
+        fitView
+        minZoom={0.05}
+        maxZoom={3}
+        proOptions={{ hideAttribution: true }}
+        elementsSelectable={true}
+        nodesConnectable={false}
+        nodesDraggable={true}
+        panOnScroll={true}
+        zoomOnPinch={true}
+        preventScrolling={true}
+      >
+        <Background color="rgba(255,255,255,0.06)" gap={24} size={2} />
+        <MiniMap 
+          nodeColor={(n) => n.data.score > 50 ? '#f43f5e' : 'rgba(255,255,255,0.3)'}
+          maskColor="rgba(0,0,0,0.5)"
+          style={{ backgroundColor: 'rgba(10,10,15,0.8)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
+        />
+      </ReactFlow>
     </div>
   );
 }

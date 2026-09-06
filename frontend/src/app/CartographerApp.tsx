@@ -238,40 +238,39 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
         </div>
       </aside>
 
-      <div className="mainContent">
+      <div className="centerStage">
         <header className="topbar">
           <MetricsRow overview={overview} riskyFileCount={riskyFiles.length} />
         </header>
-
-        <div className="contentScroll">
-          <section className="workbench">
-            <GraphPanel
-              graph={graph}
-              onNodeClick={handleNodeClick}
-              onExpand={handleExpandGraph}
-            />
-            <LoadBearingFiles files={riskyFiles} onFileClick={handleNodeClick} />
-          </section>
-
-          <section className="aiGrid">
-            <AskPanel
-              question={question}
-              onQuestionChange={setQuestion}
-              onAsk={handleAsk}
-              answer={answer}
-              semanticMatches={semanticMatches}
-              loading={loadingAsk}
-            />
-            <ImpactPanel
-              selectedFile={selectedFile}
-              onSelectedFileChange={setSelectedFile}
-              onTrace={() => handleImpact()}
-              impact={impact}
-              loading={loadingImpact}
-            />
-          </section>
+        <div className="mapContainer">
+          <GraphPanel
+            graph={graph}
+            onNodeClick={handleNodeClick}
+            onExpand={handleExpandGraph}
+          />
         </div>
       </div>
+
+      <aside className="rightSidebar">
+        <div className="sidebarScroll">
+          <LoadBearingFiles files={riskyFiles} onFileClick={handleNodeClick} />
+          <AskPanel
+            question={question}
+            onQuestionChange={setQuestion}
+            onAsk={handleAsk}
+            answer={answer}
+            semanticMatches={semanticMatches}
+            loading={loadingAsk}
+          />
+          <ImpactPanel
+            selectedFile={selectedFile}
+            onSelectedFileChange={setSelectedFile}
+            onTrace={() => handleImpact()}
+            impact={impact}
+            loading={loadingImpact}
+          />
+        </div>
+      </aside>
 
       <NodeDetailDrawer
         filePath={drawerFile}
