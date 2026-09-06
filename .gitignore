@@ -25,3 +25,5 @@ tmp/
 *_output.json
 scan_output*.json
 query_output*.json
+*REPORT.md
+
