@@ -8,7 +8,7 @@ from app.models.graph import CodeSymbol, ImportEdge
 
 try:
     from tree_sitter import Parser
-    from tree_sitter_languages import get_language
+    from tree_sitter_language_pack import get_language
 
     TREE_SITTER_AVAILABLE = True
 except ImportError:

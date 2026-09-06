@@ -42,3 +42,19 @@ def test_configure_parser_language_supports_legacy_setter_api() -> None:
     _configure_parser_language(parser, "tsx")
 
     assert parser.language_value == "tsx"
+
+def test_tree_sitter_does_not_silently_fail() -> None:
+    source = """
+    function test(x) {
+      switch(x) {
+        case 1: return 1;
+        case 2: return 2;
+        case 3: return 3;
+      }
+    }
+    """
+    # Regex fallback calculates complexity by counting 'case' keywords (1 + 3 = 4)
+    # Tree-sitter calculates complexity by counting 'switch_statement' (1 + 1 = 2)
+    _, _, complexity = parse_js_like(Path("test.ts"), "test.ts", source)
+    
+    assert complexity == 2, f"Expected 2 (tree-sitter), got {complexity}. Tree-sitter silently fell back to regex!"
