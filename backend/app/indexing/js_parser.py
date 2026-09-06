@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 
@@ -26,6 +27,8 @@ ARROW_RE = re.compile(
 )
 CLASS_RE = re.compile(r"^\s*(?:export\s+)?class\s+([A-Za-z_$][\w$]*)")
 
+logger = logging.getLogger(__name__)
+
 COMPLEXITY_NODES = {
     "if_statement",
     "for_statement",
@@ -46,8 +49,10 @@ def parse_js_like(
     if TREE_SITTER_AVAILABLE:
         try:
             return _parse_with_tree_sitter(path, relative_path, source, language)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                f"Tree-sitter parse failed for {relative_path}; using regex fallback: {exc}"
+            )
     return _parse_with_regex(relative_path, source)
 
 

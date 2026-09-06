@@ -53,5 +53,13 @@ The score is explainable and intentionally deterministic. AI may describe the ri
 
 Gemini is the primary reasoning layer for its strong code understanding and free-tier availability. Ollama is a local fallback for offline use and private codebases.
 
-No API key is stored in source control. External AI providers should be disabled when analyzing confidential repositories.
+When summaries are enabled, Cartographer sends truncated source snippets (default: 4,000 characters per file, up to 120 files) to the active LLM provider. Disable summaries or use Ollama-only for confidential repositories.
+
+No API key is stored in source control.
+
+## Persistence
+
+Repository graphs are written to Neo4j in batched `UNWIND` statements. Each scan still rebuilds symbols and dependency edges for the repository, and removes File nodes that no longer exist on disk.
+
+The architecture graph view returns the highest load-bearing files first, with a hard cap (400 nodes / 2,000 edges) so the UI stays usable on large repositories. Truncation is reported to the client so the missing remainder is visible.
 

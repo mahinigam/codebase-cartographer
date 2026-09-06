@@ -13,4 +13,5 @@ fi
 "$PYTHON_BIN" -m bandit -q -r backend/app
 
 cd frontend
+npm test
 npm run build

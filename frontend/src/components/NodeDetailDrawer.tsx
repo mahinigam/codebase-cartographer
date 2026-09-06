@@ -104,8 +104,8 @@ export function NodeDetailDrawer({
                     <ArrowRight size={14} /> Imports ({detail.imports.length})
                   </h4>
                   <ul>
-                    {detail.imports.map((p) => (
-                      <li key={p}>{p}</li>
+                    {detail.imports.map((p, index) => (
+                      <li key={`${p}-${index}`}>{p}</li>
                     ))}
                   </ul>
                 </div>
@@ -118,8 +118,8 @@ export function NodeDetailDrawer({
                     {detail.dependents.length})
                   </h4>
                   <ul>
-                    {detail.dependents.map((p) => (
-                      <li key={p}>{p}</li>
+                    {detail.dependents.map((p, index) => (
+                      <li key={`${p}-${index}`}>{p}</li>
                     ))}
                   </ul>
                 </div>
@@ -129,8 +129,8 @@ export function NodeDetailDrawer({
                 <div className="drawerSection">
                   <h4>External Dependencies</h4>
                   <ul>
-                    {detail.external_deps.map((d) => (
-                      <li key={d}>{d}</li>
+                    {detail.external_deps.map((d, index) => (
+                      <li key={`${d}-${index}`}>{d}</li>
                     ))}
                   </ul>
                 </div>

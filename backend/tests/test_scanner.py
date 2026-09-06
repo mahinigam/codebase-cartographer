@@ -70,6 +70,47 @@ def test_scan_repository_resolves_relative_typescript_imports(
     assert imports[0].target_path == "frontend/src/api.ts"
 
 
+def test_scan_repository_resolves_parent_directory_typescript_imports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "allowed_repo_roots_raw", "")
+    src = tmp_path / "frontend" / "src"
+    components = src / "components"
+    app_dir = src / "app"
+    components.mkdir(parents=True)
+    app_dir.mkdir(parents=True)
+    (components / "HeroSection.tsx").write_text(
+        "export function HeroSection() { return null; }\n", encoding="utf-8"
+    )
+    (app_dir / "CartographerApp.tsx").write_text(
+        "import { HeroSection } from '../components/HeroSection';\n",
+        encoding="utf-8",
+    )
+
+    graph = scan_repository(str(tmp_path))
+
+    imports = [edge for edge in graph.imports if edge.source_path.endswith("CartographerApp.tsx")]
+    assert imports
+    assert imports[0].target == "../components/HeroSection"
+    assert imports[0].target_path == "frontend/src/components/HeroSection.tsx"
+
+
+def test_scan_repository_resolves_js_index_barrel_imports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "allowed_repo_roots_raw", "")
+    src = tmp_path / "frontend" / "src"
+    lib = src / "lib"
+    lib.mkdir(parents=True)
+    (lib / "index.ts").write_text("export const value = 1;\n", encoding="utf-8")
+    (src / "main.ts").write_text("import { value } from './lib';\n", encoding="utf-8")
+
+    graph = scan_repository(str(tmp_path))
+
+    imports = [edge for edge in graph.imports if edge.source_path.endswith("main.ts")]
+    assert imports[0].target_path == "frontend/src/lib/index.ts"
+
+
 def test_scan_repository_records_root_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "allowed_repo_roots_raw", "")
     (tmp_path / "main.py").write_text("print('ok')\n", encoding="utf-8")

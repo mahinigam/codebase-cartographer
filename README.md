@@ -40,6 +40,7 @@ Large codebases are hard to change safely because their real architecture is usu
 | Vector search | Neo4j vector index |
 | Graph layout | dagre |
 | Tests | pytest + Vitest |
+| License | MIT |
 
 ## Quick Start
 
@@ -119,6 +120,8 @@ Notes:
 - Repository paths are constrained by `ALLOWED_REPO_ROOTS` when configured.
 - `.env` files are ignored by Git.
 - The app indexes local source files and does not upload code unless an external LLM provider is enabled.
+- When AI summaries are enabled, up to about 4,000 characters of each file's source (up to 120 files per scan by default) are sent to Google's Gemini API, or to a local Ollama model if Gemini is unavailable. Turn summaries off, or use only the Ollama fallback, for proprietary code you do not want leaving the machine.
+- Summary generation refuses paths that resolve outside the scanned repository root.
 
 ## Configuration
 

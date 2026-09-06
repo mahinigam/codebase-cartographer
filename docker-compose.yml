@@ -37,12 +37,16 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        API_BASE_URL: http://backend:8000
+        NEXT_PUBLIC_API_BASE: http://localhost:8000
     container_name: codebase-cartographer-frontend
     restart: unless-stopped
     ports:
       - "5173:5173"
     environment:
       API_BASE_URL: http://backend:8000
+      NEXT_PUBLIC_API_BASE: http://localhost:8000
       NEXT_PUBLIC_DEFAULT_REPO: /workspace
     depends_on:
       - backend

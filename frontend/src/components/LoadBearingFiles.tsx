@@ -13,8 +13,8 @@ export function LoadBearingFiles({ files, onFileClick }: Props) {
         {files.length === 0 && (
           <p className="emptyHint">Scan a repository to see results.</p>
         )}
-        {files.map((file) => (
-          <button key={file.path} onClick={() => onFileClick(file.path)}>
+        {files.map((file, index) => (
+          <button key={`${file.path}-${index}`} onClick={() => onFileClick(file.path)}>
             <span>{file.path}</span>
             <strong>{file.load_bearing_score}</strong>
           </button>

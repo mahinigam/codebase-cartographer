@@ -56,6 +56,10 @@ export function RepoBand({
           {loadingSummaries ? <Spinner /> : null}
           Generate Summaries
         </button>
+        <p className="summaryHint">
+          When enabled, up to 4,000 characters from each of up to 120 files are sent to the
+          configured LLM provider.
+        </p>
       </div>
     </section>
   );

@@ -37,6 +37,7 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
   const [repositories, setRepositories] = useState<RepositoryInfo[]>([]);
   const [activeRepoPath, setActiveRepoPath] = useState(defaultRepoPath);
   const [graph, setGraph] = useState<GraphData>({ nodes: [], edges: [] });
+  const [graphLimit, setGraphLimit] = useState(80);
   const [question, setQuestion] = useState("What are the riskiest parts of this codebase?");
   const [answer, setAnswer] = useState("");
   const [semanticMatches, setSemanticMatches] = useState<SemanticMatch[]>([]);
@@ -62,14 +63,22 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
     []
   );
 
-  async function refresh(repoScope = activeRepoPath) {
+  async function refresh(repoScope?: string) {
     try {
-      const [repoData, overviewData, graphData] = await Promise.all([
-        getRepositories(),
-        getOverview(repoScope),
-        getGraph(repoScope),
+      const repoData = await getRepositories();
+      const resolvedScope =
+        repoScope || activeRepoPath || defaultRepoPath || repoData.repositories[0]?.root_path || "";
+      const [overviewData, graphData] = await Promise.all([
+        getOverview(resolvedScope),
+        getGraph(resolvedScope, graphLimit),
       ]);
       setRepositories(repoData.repositories);
+      if (resolvedScope && resolvedScope !== activeRepoPath) {
+        setActiveRepoPath(resolvedScope);
+      }
+      if (resolvedScope && !repoPath) {
+        setRepoPath(resolvedScope);
+      }
       setOverview({
         files: overviewData.overview.files ?? 0,
         symbols: overviewData.overview.symbols ?? 0,
@@ -178,6 +187,18 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
     setDrawerFile(filePath);
   }
 
+  async function handleExpandGraph() {
+    const nextLimit = Math.min(graphLimit + 80, 400);
+    setGraphLimit(nextLimit);
+    try {
+      const graphData = await getGraph(activeRepoPath, nextLimit);
+      setGraph(graphData);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to expand graph";
+      addToast(msg);
+    }
+  }
+
   function handleDrawerImpact(path: string) {
     setDrawerFile(null);
     handleImpact(path);
@@ -208,7 +229,11 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
       <MetricsRow overview={overview} riskyFileCount={riskyFiles.length} />
 
       <section className="workbench">
-        <GraphPanel graph={graph} onNodeClick={handleNodeClick} />
+        <GraphPanel
+          graph={graph}
+          onNodeClick={handleNodeClick}
+          onExpand={handleExpandGraph}
+        />
         <LoadBearingFiles files={riskyFiles} onFileClick={handleNodeClick} />
       </section>
 

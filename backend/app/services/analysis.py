@@ -10,6 +10,8 @@ async def answer_architecture_question(
     store: Neo4jStore, question: str, repo_path: str | None = None
 ) -> dict:
     matches = store.search_files(question, repo_path=repo_path)
+    if not matches and _asks_about_risk(question):
+        matches = _load_bearing_matches(store, repo_path)
     semantic_matches = []
     embedding = await llm_client.embed(question, task="RETRIEVAL_QUERY")
     if embedding:
@@ -26,9 +28,16 @@ async def answer_architecture_question(
         for item in semantic_matches
     )
     prompt = f"""
-You are Codebase Cartographer, a structural forensics assistant.
+You are Codebase Cartographer, a structural forensics AI assistant.
 Answer the developer's architecture question using the retrieved graph and summary context.
-Be precise, cite file paths, and say when evidence is incomplete.
+
+Please format your response in pristine Markdown:
+- Use clear headings (`###`) to structure your answer.
+- Use bullet points for lists of files, symbols, or dependencies.
+- Use inline code formatting (`like this`) for file paths, variable names, and code symbols.
+- Be precise and insightful. Cite file paths explicitly.
+- Clearly state if the provided evidence is incomplete or if you are inferring relationships
+  not present in the context.
 
 Question:
 {question}
@@ -48,14 +57,56 @@ Semantic summary context:
     return {"answer": answer, "evidence": matches, "semantic_matches": semantic_matches}
 
 
+def _asks_about_risk(question: str) -> bool:
+    cleaned = "".join(character.lower() if character.isalnum() else " " for character in question)
+    words = cleaned.split()
+    return bool(
+        {
+            "risk",
+            "risks",
+            "risky",
+            "riskiest",
+            "load",
+            "bearing",
+            "loadbearing",
+            "critical",
+            "fragile",
+            "impact",
+        }
+        & set(words)
+    )
+
+
+def _load_bearing_matches(store: Neo4jStore, repo_path: str | None = None) -> list[dict]:
+    return [
+        {
+            "path": item["path"],
+            "language": item["language"],
+            "symbols": [],
+            "imports": [],
+            "dependents": [],
+            "external_deps": [],
+            "load_bearing_score": item["load_bearing_score"],
+            "matched_words": ["load-bearing", "risk"],
+        }
+        for item in store.top_load_bearing_files(repo_path=repo_path)
+    ]
+
+
 async def explain_impact(
     store: Neo4jStore, path: str, depth: int, repo_path: str | None = None
 ) -> dict:
     impact = store.impact_for_file(path, depth, repo_path=repo_path)
     prompt = f"""
-Explain the change impact for file {path}.
-Use the dependency results below. Mention direct and transitive dependents,
-and give a concise risk assessment for a refactor.
+You are Codebase Cartographer, a structural forensics AI assistant.
+Explain the change impact for the file `{path}` based on the dependency results below.
+
+Please format your response in pristine Markdown:
+- Use clear headings (e.g., `### Direct Dependents`, `### Transitive Dependents`,
+  `### Risk Assessment`).
+- Use bullet points to list affected files and modules.
+- Use inline code formatting (`like this`) for file paths.
+- Provide a concise but comprehensive risk assessment for a refactor.
 
 Impact data:
 {impact}
@@ -118,14 +169,18 @@ def _active_llm_model() -> str:
 
 
 async def _summarize_file(root: Path, relative_path: str) -> str:
-    path = root / relative_path
-    if not path.exists() or not path.is_file():
+    repo_root = root.resolve()
+    path = (root / relative_path).resolve()
+    if not path.is_relative_to(repo_root) or not path.exists() or not path.is_file():
         return ""
     source = path.read_text(encoding="utf-8", errors="ignore")
     snippet = source[: settings.summary_max_chars]
     prompt = f"""
 You are Codebase Cartographer. Summarize the file for architectural context.
-Be concise, mention primary responsibilities, key symbols, and dependencies.
+
+Please format your summary as a pristine, concise Markdown paragraph.
+Mention primary responsibilities, key symbols, and dependencies.
+Use inline code formatting (`like this`) for symbols and file paths.
 Use plain language and avoid speculation.
 
 File: {relative_path}

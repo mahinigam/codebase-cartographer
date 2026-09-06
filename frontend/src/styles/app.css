@@ -187,6 +187,13 @@ textarea:focus {
   font-size: 13px;
 }
 
+.summaryHint {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Metrics                                                            */
 /* ------------------------------------------------------------------ */
@@ -247,6 +254,52 @@ textarea:focus {
   overflow: hidden;
 }
 
+.graphViewport {
+  height: 560px;
+  overflow: auto;
+  background-color: #fbfdff;
+  background-image: radial-gradient(#d7dee8 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.graphCanvas {
+  position: relative;
+  min-width: 100%;
+  min-height: 100%;
+}
+
+.graphEdges {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.graphEdges line {
+  stroke: #94a3b8;
+  stroke-width: 1.5;
+}
+
+.graphNode {
+  position: absolute;
+  width: 200px;
+  min-height: 50px;
+  padding: 8px 10px;
+  border: 1px solid #26364f;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #172033;
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+}
+
+.graphNode.isRisky {
+  border: 2px solid #e11d48;
+  background: #fff1f2;
+  font-weight: 600;
+}
+
 .panelHeader {
   min-height: 58px;
   padding: 16px;
@@ -259,6 +312,27 @@ textarea:focus {
 .panelHeader span {
   color: var(--text-muted);
   font-size: 13px;
+}
+
+.graphHeaderMeta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.graphTruncationNote {
+  margin: 0;
+  padding: 8px 16px 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.ghostButton {
+  background: var(--accent-light);
+  color: var(--accent);
+  border: 1px solid #99f6e4;
+  padding: 6px 10px;
+  font-size: 12px;
 }
 
 .sidePanel {

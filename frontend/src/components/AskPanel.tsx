@@ -40,8 +40,8 @@ export function AskPanel({
       {semanticMatches.length > 0 && (
         <div className="semantic">
           <h3>Semantic Matches</h3>
-          {semanticMatches.map((match) => (
-            <div key={`${match.path}-${match.score}`}>
+          {semanticMatches.map((match, index) => (
+            <div key={`${match.path}-${index}`}>
               <strong>{match.path}</strong>
               <span>score {match.score.toFixed(3)}</span>
               <p>{match.summary}</p>

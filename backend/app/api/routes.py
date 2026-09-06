@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException
+import logging
+
+from fastapi import APIRouter, HTTPException, Query
 
 from app.indexing.scanner import UnsafeRepositoryPath, scan_repository
 from app.models.graph import ImpactRequest, QueryRequest, ScanRequest, SummaryRequest
@@ -7,9 +9,16 @@ from app.services.analysis import (
     explain_impact,
     generate_summaries_for_repo,
 )
-from app.services.neo4j_store import neo4j_store
+from app.services.neo4j_store import (
+    GRAPH_DEFAULT_EDGE_LIMIT,
+    GRAPH_DEFAULT_NODE_LIMIT,
+    GRAPH_MAX_EDGE_LIMIT,
+    GRAPH_MAX_NODE_LIMIT,
+    neo4j_store,
+)
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/health")
@@ -35,7 +44,11 @@ async def scan(request: ScanRequest) -> dict:
         overview = store.overview(repo_path=graph.root_path)
         summary_status = None
         if request.summarize:
-            summary_status = await generate_summaries_for_repo(store, graph.root_path)
+            try:
+                summary_status = await generate_summaries_for_repo(store, graph.root_path)
+            except Exception as exc:
+                logger.exception("Summary generation failed after scan")
+                summary_status = {"error": str(exc)}
     return {
         "repository": graph.name,
         "root_path": graph.root_path,
@@ -63,9 +76,13 @@ def repositories() -> dict:
 
 
 @router.get("/graph")
-def graph(limit: int = 80, repo_path: str | None = None) -> dict:
+def graph(
+    limit: int = Query(default=GRAPH_DEFAULT_NODE_LIMIT, ge=1, le=GRAPH_MAX_NODE_LIMIT),
+    edge_limit: int = Query(default=GRAPH_DEFAULT_EDGE_LIMIT, ge=1, le=GRAPH_MAX_EDGE_LIMIT),
+    repo_path: str | None = None,
+) -> dict:
     with neo4j_store() as store:
-        return store.graph_slice(limit=limit, repo_path=repo_path)
+        return store.graph_slice(limit=limit, edge_limit=edge_limit, repo_path=repo_path)
 
 
 @router.post("/query")

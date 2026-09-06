@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import "reactflow/dist/style.css";
 import "../styles/app.css";
 
 export const metadata: Metadata = {

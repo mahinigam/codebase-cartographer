@@ -27,6 +27,11 @@ export type LoadBearingFile = {
 export type GraphData = {
   nodes: Array<{ id: string; label: string; score: number; labels: string[] }>;
   edges: Array<{ source: string; target: string; type: string }>;
+  total_files?: number;
+  total_edges?: number;
+  truncated?: boolean;
+  node_limit?: number;
+  edge_limit?: number;
 };
 
 export type SemanticMatch = {
@@ -77,8 +82,8 @@ export async function getOverview(repoPath?: string): Promise<Overview> {
   return request(withRepoPath("/api/overview", repoPath));
 }
 
-export async function getGraph(repoPath?: string): Promise<GraphData> {
-  return request(withRepoPath("/api/graph", repoPath));
+export async function getGraph(repoPath?: string, limit = 80): Promise<GraphData> {
+  return request(withQuery("/api/graph", { repo_path: repoPath, limit }));
 }
 
 export async function askQuestion(question: string, repoPath?: string): Promise<AskResponse> {
@@ -111,10 +116,21 @@ export async function generateSummaries(repoPath: string, maxFiles?: number) {
   });
 }
 
-function withRepoPath(path: string, repoPath?: string) {
-  if (!repoPath) return path;
-  const params = new URLSearchParams({ repo_path: repoPath });
-  return `${path}?${params.toString()}`;
+export function withRepoPath(path: string, repoPath?: string) {
+  return withQuery(path, { repo_path: repoPath });
+}
+
+export function withQuery(
+  path: string,
+  params: Record<string, string | number | undefined>
+) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === "") continue;
+    search.set(key, String(value));
+  }
+  const query = search.toString();
+  return query ? `${path}?${query}` : path;
 }
 
 async function request(path: string, init?: RequestInit) {

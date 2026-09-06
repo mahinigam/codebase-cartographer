@@ -9,6 +9,13 @@ COPY tsconfig.json /app/tsconfig.json
 COPY src /app/src
 
 RUN npm ci
+
+ARG API_BASE_URL
+ENV API_BASE_URL=$API_BASE_URL
+
+ARG NEXT_PUBLIC_API_BASE
+ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
+
 RUN npm run build
 
 EXPOSE 5173

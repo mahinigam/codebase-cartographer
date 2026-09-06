@@ -1,10 +1,16 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from contextlib import contextmanager
 
 from neo4j import GraphDatabase
 
 from app.core.config import settings
 from app.models.graph import CodeFile, CodeSymbol, RepositoryGraph
+
+WRITE_BATCH_SIZE = 250
+GRAPH_DEFAULT_NODE_LIMIT = 80
+GRAPH_MAX_NODE_LIMIT = 400
+GRAPH_DEFAULT_EDGE_LIMIT = 200
+GRAPH_MAX_EDGE_LIMIT = 2000
 
 
 class Neo4jStore:
@@ -22,13 +28,15 @@ class Neo4jStore:
             return bool(session.run("RETURN 1 AS ok").single()["ok"])
 
     def ensure_schema(self) -> None:
-        vector_dimensions = settings.embedding_dimensions
+        vector_dimensions = int(settings.embedding_dimensions)
+        if vector_dimensions < 1 or vector_dimensions > 4096:
+            raise ValueError("embedding_dimensions must be between 1 and 4096")
         vector_index = (
             "CREATE VECTOR INDEX summary_embedding IF NOT EXISTS "
             "FOR (s:Summary) ON (s.embedding) "
-            "OPTIONS {indexConfig: {`vector.dimensions`: %d, "
+            f"OPTIONS {{indexConfig: {{`vector.dimensions`: {vector_dimensions}, "
             "`vector.similarity_function`: 'cosine'}}"
-        ) % vector_dimensions
+        )
         statements = [
             (
                 "CREATE CONSTRAINT repo_path IF NOT EXISTS "
@@ -59,18 +67,36 @@ class Neo4jStore:
             root_path=graph.root_path,
             name=graph.name,
         )
-        for file in graph.files:
+        file_rows = [
+            {
+                "key": f"{graph.root_path}:{file.path}",
+                "props": _file_props(file, graph.root_path),
+            }
+            for file in graph.files
+        ]
+        for batch in _batched(file_rows):
             tx.run(
                 """
                 MATCH (r:Repository {root_path: $root_path})
-                MERGE (f:File {key: $key})
-                SET f += $props
+                UNWIND $files AS file
+                MERGE (f:File {key: file.key})
+                SET f += file.props
                 MERGE (r)-[:CONTAINS]->(f)
                 """,
                 root_path=graph.root_path,
-                key=f"{graph.root_path}:{file.path}",
-                props=_file_props(file, graph.root_path),
+                files=batch,
             )
+        tx.run(
+            """
+            MATCH (r:Repository {root_path: $root_path})-[:CONTAINS]->(f:File)
+            WHERE NOT f.key IN $keys
+            OPTIONAL MATCH (f)-[:DEFINES]->(s:Symbol)
+            OPTIONAL MATCH (f)-[:SUMMARIZES]->(sum:Summary)
+            DETACH DELETE s, sum, f
+            """,
+            root_path=graph.root_path,
+            keys=[row["key"] for row in file_rows],
+        )
         tx.run(
             """
             MATCH (r:Repository {root_path: $root_path})-[:CONTAINS]->(f:File)
@@ -87,42 +113,56 @@ class Neo4jStore:
             """,
             root_path=graph.root_path,
         )
-        for symbol in graph.symbols:
+        symbol_rows = [
+            {
+                "file_key": f"{graph.root_path}:{symbol.file_path}",
+                "id": _symbol_key(graph.root_path, symbol),
+                "props": _symbol_props(symbol),
+            }
+            for symbol in graph.symbols
+        ]
+        for batch in _batched(symbol_rows):
             tx.run(
                 """
-                MATCH (f:File {key: $file_key})
-                MERGE (s:Symbol {id: $id})
-                SET s += $props
+                UNWIND $symbols AS symbol
+                MATCH (f:File {key: symbol.file_key})
+                MERGE (s:Symbol {id: symbol.id})
+                SET s += symbol.props
                 MERGE (f)-[:DEFINES]->(s)
                 """,
-                file_key=f"{graph.root_path}:{symbol.file_path}",
-                id=symbol.id,
-                props=_symbol_props(symbol),
+                symbols=batch,
             )
-        for edge in graph.imports:
-            if edge.target_path:
-                tx.run(
-                    """
-                    MATCH (source:File {key: $source_key})
-                    MATCH (target:File {key: $target_key})
-                    MERGE (source)-[rel:IMPORTS]->(target)
-                    SET rel.target = $target, rel.line_number = $line_number, rel.source = "static"
-                    """,
-                    source_key=f"{graph.root_path}:{edge.source_path}",
-                    target_key=f"{graph.root_path}:{edge.target_path}",
-                    target=edge.target,
-                    line_number=edge.line_number,
-                )
-            else:
-                tx.run(
-                    """
-                    MATCH (source:File {key: $source_key})
-                    MERGE (dep:ExternalDependency {name: $target})
-                    MERGE (source)-[:DEPENDS_ON]->(dep)
-                    """,
-                    source_key=f"{graph.root_path}:{edge.source_path}",
-                    target=edge.target,
-                )
+        import_rows, dep_rows = _import_batches(graph)
+        for batch in _batched(import_rows):
+            tx.run(
+                """
+                UNWIND $imports AS edge
+                MATCH (source:File {key: edge.source_key})
+                MATCH (target:File {key: edge.target_key})
+                MERGE (source)-[rel:IMPORTS]->(target)
+                SET rel.target = edge.target,
+                    rel.line_number = edge.line_number,
+                    rel.source = "static"
+                """,
+                imports=batch,
+            )
+        for batch in _batched(dep_rows):
+            tx.run(
+                """
+                UNWIND $deps AS edge
+                MATCH (source:File {key: edge.source_key})
+                MERGE (dep:ExternalDependency {name: edge.target})
+                MERGE (source)-[:DEPENDS_ON]->(dep)
+                """,
+                deps=batch,
+            )
+        tx.run(
+            """
+            MATCH (dep:ExternalDependency)
+            WHERE NOT ()-[:DEPENDS_ON]->(dep)
+            DETACH DELETE dep
+            """
+        )
 
     def repositories(self) -> list[dict]:
         with self.driver.session() as session:
@@ -171,8 +211,23 @@ class Neo4jStore:
             )
             return [dict(record) for record in result]
 
-    def graph_slice(self, limit: int = 80, repo_path: str | None = None) -> dict:
+    def graph_slice(
+        self,
+        limit: int = GRAPH_DEFAULT_NODE_LIMIT,
+        edge_limit: int = GRAPH_DEFAULT_EDGE_LIMIT,
+        repo_path: str | None = None,
+    ) -> dict:
+        node_limit, edge_cap = clamp_graph_limits(limit, edge_limit)
         with self.driver.session() as session:
+            total_record = session.run(
+                """
+                MATCH (r:Repository)-[:CONTAINS]->(f:File)
+                WHERE $repo_path IS NULL OR r.root_path = $repo_path
+                RETURN count(f) AS total
+                """,
+                repo_path=repo_path,
+            ).single()
+            total_files = int(total_record["total"]) if total_record else 0
             nodes = session.run(
                 """
                 MATCH (r:Repository)-[:CONTAINS]->(f:File)
@@ -183,21 +238,40 @@ class Neo4jStore:
                 ORDER BY f.load_bearing_score DESC
                 LIMIT $limit
                 """,
-                limit=limit,
+                limit=node_limit,
                 repo_path=repo_path,
             )
             node_rows = [dict(record) for record in nodes]
             ids = [row["id"] for row in node_rows]
+            edge_record = session.run(
+                """
+                MATCH (a:File)-[rel:IMPORTS]->(b:File)
+                WHERE a.key IN $ids AND b.key IN $ids
+                WITH count(rel) AS total
+                RETURN total
+                """,
+                ids=ids,
+            ).single()
+            total_edges = int(edge_record["total"]) if edge_record else 0
             edges = session.run(
                 """
                 MATCH (a:File)-[r:IMPORTS]->(b:File)
                 WHERE a.key IN $ids AND b.key IN $ids
                 RETURN a.key AS source, b.key AS target, type(r) AS type
-                LIMIT 200
+                LIMIT $edge_limit
                 """,
                 ids=ids,
+                edge_limit=edge_cap,
             )
-            return {"nodes": node_rows, "edges": [dict(record) for record in edges]}
+            return {
+                "nodes": node_rows,
+                "edges": [dict(record) for record in edges],
+                "total_files": total_files,
+                "total_edges": total_edges,
+                "truncated": total_files > len(node_rows) or total_edges > edge_cap,
+                "node_limit": node_limit,
+                "edge_limit": edge_cap,
+            }
 
     def file_paths(self, repo_path: str) -> list[str]:
         with self.driver.session() as session:
@@ -224,7 +298,8 @@ class Neo4jStore:
         with self.driver.session() as session:
             session.run(
                 """
-                MATCH (r:Repository {root_path: $repo_path})-[:CONTAINS]->(f:File {path: $file_path})
+                MATCH (r:Repository {root_path: $repo_path})
+                MATCH (r)-[:CONTAINS]->(f:File {path: $file_path})
                 MERGE (s:Summary {key: $key})
                 SET s.text = $text,
                     s.model = $model,
@@ -381,6 +456,39 @@ class Neo4jStore:
             return [dict(record) for record in result]
 
 
+def clamp_graph_limits(
+    node_limit: int, edge_limit: int
+) -> tuple[int, int]:
+    return (
+        max(1, min(int(node_limit), GRAPH_MAX_NODE_LIMIT)),
+        max(1, min(int(edge_limit), GRAPH_MAX_EDGE_LIMIT)),
+    )
+
+
+def _batched(items: Sequence, size: int = WRITE_BATCH_SIZE) -> Iterable[list]:
+    for index in range(0, len(items), size):
+        yield list(items[index : index + size])
+
+
+def _import_batches(graph: RepositoryGraph) -> tuple[list[dict], list[dict]]:
+    import_rows: list[dict] = []
+    dep_rows: list[dict] = []
+    for edge in graph.imports:
+        source_key = f"{graph.root_path}:{edge.source_path}"
+        if edge.target_path:
+            import_rows.append(
+                {
+                    "source_key": source_key,
+                    "target_key": f"{graph.root_path}:{edge.target_path}",
+                    "target": edge.target,
+                    "line_number": edge.line_number,
+                }
+            )
+        else:
+            dep_rows.append({"source_key": source_key, "target": edge.target})
+    return import_rows, dep_rows
+
+
 def _file_props(file: CodeFile, root_path: str) -> dict:
     return {
         "root_path": root_path,
@@ -396,6 +504,7 @@ def _file_props(file: CodeFile, root_path: str) -> dict:
 
 def _symbol_props(symbol: CodeSymbol) -> dict:
     return {
+        "local_id": symbol.id,
         "file_path": symbol.file_path,
         "name": symbol.name,
         "kind": symbol.kind,
@@ -404,6 +513,10 @@ def _symbol_props(symbol: CodeSymbol) -> dict:
         "end_line": symbol.end_line,
         "complexity": symbol.complexity,
     }
+
+
+def _symbol_key(root_path: str, symbol: CodeSymbol) -> str:
+    return f"{root_path}:{symbol.id}"
 
 
 def _search_words(query: str) -> list[str]:

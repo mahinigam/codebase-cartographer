@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from app.core.config import settings
@@ -110,12 +111,31 @@ def _js_module_index(file_paths: set[str]) -> dict[str, str]:
     return modules
 
 
+_JS_SUFFIXES = (".tsx", ".ts", ".jsx", ".js", ".mjs", ".cjs")
+
+
 def _resolve_relative_module(source_path: str, target: str, modules: dict[str, str]) -> str | None:
     source_parent = Path(source_path).parent
-    normalized = (source_parent / target).as_posix()
+    normalized = Path(os.path.normpath(source_parent / target)).as_posix()
     while normalized.startswith("./"):
         normalized = normalized[2:]
-    return modules.get(normalized)
+    if normalized == ".." or normalized.startswith("../"):
+        return None
+    return _lookup_js_module(normalized, modules)
+
+
+def _lookup_js_module(normalized: str, modules: dict[str, str]) -> str | None:
+    stems = [normalized]
+    for suffix in _JS_SUFFIXES:
+        if normalized.endswith(suffix):
+            stems.append(normalized[: -len(suffix)])
+            break
+    for stem in stems:
+        for candidate in (stem, f"{stem}/index"):
+            resolved = modules.get(candidate)
+            if resolved:
+                return resolved
+    return None
 
 
 def _resolve_relative_python_module(
