@@ -209,7 +209,7 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <main>
+    <main className="appShell">
       <HeroSection
         repoPath={repoPath}
         onRepoPathChange={setRepoPath}
