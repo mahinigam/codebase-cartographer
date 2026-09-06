@@ -57,4 +57,7 @@ def test_tree_sitter_does_not_silently_fail() -> None:
     # Tree-sitter calculates complexity by counting 'switch_statement' (1 + 1 = 2)
     _, _, complexity = parse_js_like(Path("test.ts"), "test.ts", source)
     
-    assert complexity == 2, f"Expected 2 (tree-sitter), got {complexity}. Tree-sitter silently fell back to regex!"
+    assert complexity == 2, (
+        f"Expected 2 (tree-sitter), got {complexity}. "
+        "Tree-sitter silently fell back to regex!"
+    )
