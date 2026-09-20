@@ -1,9 +1,9 @@
-import React, { useMemo, useCallback } from "react";
+import React, { useMemo, useCallback, useState } from "react";
 import dagre from "@dagrejs/dagre";
 import ReactFlow, { Background, MiniMap, Node, Edge, Handle, Position, useReactFlow, ReactFlowProvider } from "reactflow";
 import "reactflow/dist/style.css";
 import { GraphData } from "../lib/api";
-import { GraphToolbar } from "./GraphToolbar";
+import { GraphToolbar, GraphFilters } from "./GraphToolbar";
 
 type Props = {
   graph: GraphData;
@@ -88,10 +88,16 @@ function GraphPanelContent({
   avgRisk,
   onFilterToggle
 }: Props) {
+  const [filters, setFilters] = useState<GraphFilters>({
+    hideTests: false,
+    highRiskOnly: false,
+    hideIsolated: false,
+  });
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const { fitView, zoomIn, zoomOut } = useReactFlow();
 
   const { nodes, edges } = useMemo(() => {
-    const rawNodes: Node[] = graph.nodes.map((node) => ({
+    let rawNodes: Node[] = graph.nodes.map((node) => ({
       id: node.id,
       type: "cartographerNode",
       data: { 
@@ -106,44 +112,80 @@ function GraphPanelContent({
       position: { x: 0, y: 0 },
     }));
 
-    const hasSelection = Boolean(selectedFile) || impactMode;
-    let selectedNeighbors = new Set<string>();
-    
-    if (impactMode && impactData) {
-      selectedNeighbors.add(impactData.target);
-      impactData.direct_dependents.forEach((d: string) => selectedNeighbors.add(d));
-      impactData.transitive_dependents.forEach((d: any) => selectedNeighbors.add(d.path));
-    } else if (selectedFile) {
-      const selectedId = rawNodes.find(n => n.data.label === selectedFile)?.id;
-      if (selectedId) {
-        selectedNeighbors.add(selectedId);
-        graph.edges.forEach(e => {
-          if (e.source === selectedId) selectedNeighbors.add(e.target);
-          if (e.target === selectedId) selectedNeighbors.add(e.source);
-        });
-      }
+    if (filters.hideTests) {
+      rawNodes = rawNodes.filter(n => {
+        const path = n.data.label.toLowerCase();
+        return !path.includes('.test.') && !path.includes('.spec.') && !path.includes('/tests/');
+      });
     }
 
-    const rawEdges: Edge[] = graph.edges.map((edge, i) => {
-      const isRelated = selectedNeighbors.has(edge.source) && selectedNeighbors.has(edge.target);
-      const isDimmed = hasSelection && !isRelated;
+    if (filters.highRiskOnly) {
+      rawNodes = rawNodes.filter(n => n.data.score > 75);
+    }
 
-      let strokeColor = isRelated ? 'rgba(255, 255, 255, 0.4)' : (isDimmed ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.15)');
-      if (impactMode && isRelated) {
-         strokeColor = '#f43f5e';
-      }
+    const nodeIds = new Set(rawNodes.map(n => n.id));
 
-      return {
+    let rawEdges: Edge[] = graph.edges
+      .filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target))
+      .map((edge, i) => ({
         id: `${edge.source}-${edge.target}-${i}`,
         source: edge.source,
         target: edge.target,
-        animated: impactMode && isRelated,
-        style: { 
-          stroke: strokeColor, 
-          strokeWidth: isRelated ? 2 : 1.5 
+        animated: false,
+        style: { stroke: 'rgba(255, 255, 255, 0.15)', strokeWidth: 1.5 }
+      }));
+
+    if (filters.hideIsolated) {
+      const connectedNodes = new Set<string>();
+      rawEdges.forEach(e => {
+        connectedNodes.add(e.source);
+        connectedNodes.add(e.target);
+      });
+      rawNodes = rawNodes.filter(n => connectedNodes.has(n.id));
+      // Rebuild nodeIds
+      nodeIds.clear();
+      rawNodes.forEach(n => nodeIds.add(n.id));
+    }
+
+    const hasSelection = Boolean(selectedFile) || impactMode;
+    let selectedNeighbors = new Set<string>();
+
+    if (hasSelection) {
+      if (impactMode && impactData) {
+        selectedNeighbors.add(impactData.target);
+        impactData.direct_dependents?.forEach((d: string) => selectedNeighbors.add(d));
+        impactData.transitive_dependents?.forEach((d: any) => selectedNeighbors.add(d.path));
+      } else if (selectedFile) {
+        const selectedId = rawNodes.find(n => n.data.label === selectedFile)?.id;
+        if (selectedId) {
+          selectedNeighbors.add(selectedId);
+          rawEdges.forEach(e => {
+            if (e.source === selectedId) selectedNeighbors.add(e.target);
+            if (e.target === selectedId) selectedNeighbors.add(e.source);
+          });
         }
-      };
-    });
+      }
+
+      // Update edges styling for selection
+      rawEdges = rawEdges.map((edge) => {
+        const isRelated = selectedNeighbors.has(edge.source) && selectedNeighbors.has(edge.target);
+        const isDimmed = !isRelated;
+
+        let strokeColor = isRelated ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.05)';
+        if (impactMode && isRelated) {
+           strokeColor = '#f43f5e';
+        }
+
+        return {
+          ...edge,
+          animated: impactMode && isRelated,
+          style: { 
+            stroke: strokeColor, 
+            strokeWidth: isRelated ? 2 : 1.5 
+          }
+        };
+      });
+    }
 
     const laidNodes = layoutWithDagre(rawNodes, rawEdges);
     
@@ -161,7 +203,7 @@ function GraphPanelContent({
     }
 
     return { nodes: laidNodes, edges: rawEdges };
-  }, [graph, selectedFile, impactMode, impactData]);
+  }, [graph, selectedFile, impactMode, impactData, filters]);
 
   const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     onNodeClick(node.data.label);
@@ -208,13 +250,16 @@ function GraphPanelContent({
       {overview && (
         <GraphToolbar
           overview={overview}
-          totalFiles={totalFiles || 0}
-          totalEdges={totalEdges || 0}
+          totalFiles={nodes.length}
+          totalEdges={edges.length}
           avgRisk={avgRisk || 0}
           onFit={() => fitView({ duration: 800 })}
           onZoomIn={() => zoomIn({ duration: 300 })}
           onZoomOut={() => zoomOut({ duration: 300 })}
-          onFilterToggle={onFilterToggle || (() => {})}
+          isFilterOpen={isFilterOpen}
+          filters={filters}
+          onFilterToggle={() => setIsFilterOpen(!isFilterOpen)}
+          onFilterChange={setFilters}
         />
       )}
     </div>
