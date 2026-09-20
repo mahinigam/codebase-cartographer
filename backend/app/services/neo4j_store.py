@@ -242,8 +242,10 @@ class Neo4jStore:
                 WITH f, fan_in, count(imported) as fan_out
                 RETURN f.key AS id, f.path AS label,
                        coalesce(f.load_bearing_score, 0) AS score, labels(f) AS labels,
-                       f.root_path AS repo_path, coalesce(f.language, "") AS language, coalesce(f.loc, 0) AS loc,
-                       fan_in, fan_out, coalesce(f.churn_count, 0) AS churn, coalesce(f.complexity, 0) AS complexity
+                       f.root_path AS repo_path, coalesce(f.language, "") AS language, 
+                       coalesce(f.loc, 0) AS loc, fan_in, fan_out, 
+                       coalesce(f.churn_count, 0) AS churn, 
+                       coalesce(f.complexity, 0) AS complexity
                 ORDER BY score DESC
                 LIMIT $limit
                 """,
@@ -401,7 +403,8 @@ class Neo4jStore:
                 MATCH (r:Repository)-[:CONTAINS]->(f:File)
                 WHERE $repo_path IS NULL OR r.root_path = $repo_path
                 RETURN f.path AS path, f.language AS language, coalesce(f.loc, 0) AS loc,
-                       coalesce(f.complexity, 0) AS complexity, coalesce(f.churn_count, 0) AS churn_count,
+                       coalesce(f.complexity, 0) AS complexity, 
+                       coalesce(f.churn_count, 0) AS churn_count,
                        coalesce(f.load_bearing_score, 0) AS load_bearing_score
                 ORDER BY f.path
                 """,
@@ -545,10 +548,12 @@ class Neo4jStore:
                      (toFloat(fan_in) / $max_fi) AS raw_fi_norm
                      
                 WITH f, fan_in, fan_out, symbols, imports, dependents, external_deps, summary,
-                     (CASE WHEN coalesce(f.loc, 0) < 30 AND coalesce(f.complexity, 0) <= 1 THEN raw_fi_norm * 0.3 ELSE raw_fi_norm END) AS fi_norm
+                     (CASE WHEN coalesce(f.loc, 0) < 30 AND coalesce(f.complexity, 0) <= 1 
+                           THEN raw_fi_norm * 0.3 ELSE raw_fi_norm END) AS fi_norm
                 
                 RETURN f.path AS path, f.language AS language, coalesce(f.loc, 0) AS loc,
-                       coalesce(f.complexity, 0) AS complexity, coalesce(f.churn_count, 0) AS churn_count,
+                       coalesce(f.complexity, 0) AS complexity, 
+                       coalesce(f.churn_count, 0) AS churn_count,
                        f.last_modified AS last_modified,
                        coalesce(f.load_bearing_score, 0) AS load_bearing_score,
                        symbols, imports, dependents, external_deps, summary,
@@ -560,7 +565,8 @@ class Neo4jStore:
                            fan_in_normalized: fi_norm,
                            complexity_normalized: toFloat(coalesce(f.complexity, 0)) / $max_c,
                            churn_normalized: toFloat(coalesce(f.churn_count, 0)) / $max_ch,
-                           fan_out_normalized: (CASE WHEN (toFloat(fan_out) / 10.0) > 1.0 THEN 1.0 ELSE (toFloat(fan_out) / 10.0) END)
+                           fan_out_normalized: (CASE WHEN (toFloat(fan_out) / 10.0) > 1.0 
+                                                THEN 1.0 ELSE (toFloat(fan_out) / 10.0) END)
                        } AS risk_components
                 """,
                 path=path,
