@@ -27,3 +27,5 @@ scan_output*.json
 query_output*.json
 *REPORT.md
 
+*.tsbuildinfo
+next-env.d.ts
