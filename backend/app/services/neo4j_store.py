@@ -216,30 +216,40 @@ class Neo4jStore:
         limit: int = GRAPH_DEFAULT_NODE_LIMIT,
         edge_limit: int = GRAPH_DEFAULT_EDGE_LIMIT,
         repo_path: str | None = None,
+        path_prefix: str | None = None,
     ) -> dict:
         node_limit, edge_cap = clamp_graph_limits(limit, edge_limit)
         with self.driver.session() as session:
             total_record = session.run(
                 """
                 MATCH (r:Repository)-[:CONTAINS]->(f:File)
-                WHERE $repo_path IS NULL OR r.root_path = $repo_path
+                WHERE ($repo_path IS NULL OR r.root_path = $repo_path)
+                  AND ($path_prefix IS NULL OR f.path STARTS WITH $path_prefix)
                 RETURN count(f) AS total
                 """,
                 repo_path=repo_path,
+                path_prefix=path_prefix,
             ).single()
             total_files = int(total_record["total"]) if total_record else 0
             nodes = session.run(
                 """
                 MATCH (r:Repository)-[:CONTAINS]->(f:File)
-                WHERE $repo_path IS NULL OR r.root_path = $repo_path
+                WHERE ($repo_path IS NULL OR r.root_path = $repo_path)
+                  AND ($path_prefix IS NULL OR f.path STARTS WITH $path_prefix)
+                OPTIONAL MATCH (dependent:File)-[:IMPORTS]->(f)
+                WITH f, count(dependent) as fan_in
+                OPTIONAL MATCH (f)-[:IMPORTS]->(imported:File)
+                WITH f, fan_in, count(imported) as fan_out
                 RETURN f.key AS id, f.path AS label,
-                       f.load_bearing_score AS score, labels(f) AS labels,
-                       f.root_path AS repo_path
-                ORDER BY f.load_bearing_score DESC
+                       coalesce(f.load_bearing_score, 0) AS score, labels(f) AS labels,
+                       f.root_path AS repo_path, coalesce(f.language, "") AS language, coalesce(f.loc, 0) AS loc,
+                       fan_in, fan_out, coalesce(f.churn_count, 0) AS churn, coalesce(f.complexity, 0) AS complexity
+                ORDER BY score DESC
                 LIMIT $limit
                 """,
                 limit=node_limit,
                 repo_path=repo_path,
+                path_prefix=path_prefix,
             )
             node_rows = [dict(record) for record in nodes]
             ids = [row["id"] for row in node_rows]
@@ -384,6 +394,21 @@ class Neo4jStore:
             )
             return [record["path"] for record in result]
 
+    def files_list(self, repo_path: str | None = None) -> list[dict]:
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                MATCH (r:Repository)-[:CONTAINS]->(f:File)
+                WHERE $repo_path IS NULL OR r.root_path = $repo_path
+                RETURN f.path AS path, f.language AS language, coalesce(f.loc, 0) AS loc,
+                       coalesce(f.complexity, 0) AS complexity, coalesce(f.churn_count, 0) AS churn_count,
+                       coalesce(f.load_bearing_score, 0) AS load_bearing_score
+                ORDER BY f.path
+                """,
+                repo_path=repo_path,
+            )
+            return [dict(record) for record in result]
+
     def upsert_file_summary(
         self,
         repo_path: str,
@@ -476,6 +501,23 @@ class Neo4jStore:
 
     def file_detail(self, path: str, repo_path: str | None = None) -> dict:
         with self.driver.session() as session:
+            maxes = session.run(
+                """
+                MATCH (r:Repository)-[:CONTAINS]->(f:File)
+                WHERE $repo_path IS NULL OR r.root_path = $repo_path
+                OPTIONAL MATCH (dependent:File)-[:IMPORTS]->(f)
+                WITH f, count(dependent) AS fi
+                RETURN coalesce(max(f.complexity), 1) AS max_c,
+                       coalesce(max(f.churn_count), 1) AS max_ch,
+                       coalesce(max(fi), 1) AS max_fi
+                """,
+                repo_path=repo_path,
+            ).single()
+            
+            max_c = max(maxes["max_c"], 1) if maxes else 1
+            max_ch = max(maxes["max_ch"], 1) if maxes else 1
+            max_fi = max(maxes["max_fi"], 1) if maxes else 1
+
             result = session.run(
                 """
                 MATCH (r:Repository)-[:CONTAINS]->(f:File {path: $path})
@@ -488,20 +530,44 @@ class Neo4jStore:
                 OPTIONAL MATCH (dependent:File)-[:IMPORTS]->(f)
                 OPTIONAL MATCH (f)-[:DEPENDS_ON]->(dep:ExternalDependency)
                 OPTIONAL MATCH (f)-[:SUMMARIZES]->(sum:Summary)
-                RETURN f.path AS path, f.language AS language, f.loc AS loc,
-                       f.complexity AS complexity, f.churn_count AS churn_count,
-                       f.last_modified AS last_modified,
-                       f.load_bearing_score AS load_bearing_score,
-                       collect(DISTINCT {name: s.name, kind: s.kind,
+                WITH f, 
+                     count(DISTINCT dependent) AS fan_in,
+                     count(DISTINCT imported) AS fan_out,
+                     collect(DISTINCT {name: s.name, kind: s.kind,
                                signature: s.signature, start_line: s.start_line,
                                end_line: s.end_line}) AS symbols,
-                       collect(DISTINCT imported.path) AS imports,
-                       collect(DISTINCT dependent.path) AS dependents,
-                       collect(DISTINCT dep.name) AS external_deps,
-                       head(collect(DISTINCT sum.text)) AS summary
+                     collect(DISTINCT imported.path) AS imports,
+                     collect(DISTINCT dependent.path) AS dependents,
+                     collect(DISTINCT dep.name) AS external_deps,
+                     head(collect(DISTINCT sum.text)) AS summary
+                     
+                WITH f, fan_in, fan_out, symbols, imports, dependents, external_deps, summary,
+                     (toFloat(fan_in) / $max_fi) AS raw_fi_norm
+                     
+                WITH f, fan_in, fan_out, symbols, imports, dependents, external_deps, summary,
+                     (CASE WHEN coalesce(f.loc, 0) < 30 AND coalesce(f.complexity, 0) <= 1 THEN raw_fi_norm * 0.3 ELSE raw_fi_norm END) AS fi_norm
+                
+                RETURN f.path AS path, f.language AS language, coalesce(f.loc, 0) AS loc,
+                       coalesce(f.complexity, 0) AS complexity, coalesce(f.churn_count, 0) AS churn_count,
+                       f.last_modified AS last_modified,
+                       coalesce(f.load_bearing_score, 0) AS load_bearing_score,
+                       symbols, imports, dependents, external_deps, summary,
+                       {
+                           fan_in: fan_in,
+                           fan_out: fan_out,
+                           complexity: coalesce(f.complexity, 0),
+                           churn_count: coalesce(f.churn_count, 0),
+                           fan_in_normalized: fi_norm,
+                           complexity_normalized: toFloat(coalesce(f.complexity, 0)) / $max_c,
+                           churn_normalized: toFloat(coalesce(f.churn_count, 0)) / $max_ch,
+                           fan_out_normalized: (CASE WHEN (toFloat(fan_out) / 10.0) > 1.0 THEN 1.0 ELSE (toFloat(fan_out) / 10.0) END)
+                       } AS risk_components
                 """,
                 path=path,
                 repo_path=repo_path,
+                max_fi=max_fi,
+                max_c=max_c,
+                max_ch=max_ch,
             ).single()
             if not result:
                 return {}

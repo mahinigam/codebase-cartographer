@@ -126,15 +126,34 @@ def repositories() -> dict:
         return {"repositories": store.repositories()}
 
 
+@router.get("/files")
+def files(repo_path: str | None = None) -> dict:
+    with neo4j_store() as store:
+        return {"files": store.files_list(repo_path=repo_path)}
+
+
 @router.get("/graph")
 def graph(
     limit: int = Query(default=GRAPH_DEFAULT_NODE_LIMIT, ge=1, le=GRAPH_MAX_NODE_LIMIT),
     edge_limit: int = Query(default=GRAPH_DEFAULT_EDGE_LIMIT, ge=1, le=GRAPH_MAX_EDGE_LIMIT),
     repo_path: str | None = None,
+    path_prefix: str | None = None,
 ) -> dict:
     with neo4j_store() as store:
-        return store.graph_slice(limit=limit, edge_limit=edge_limit, repo_path=repo_path)
+        return store.graph_slice(
+            limit=limit,
+            edge_limit=edge_limit,
+            repo_path=repo_path,
+            path_prefix=path_prefix
+        )
 
+
+@router.get("/search")
+def search(q: str, limit: int = 8, repo_path: str | None = None) -> dict:
+    if not q or len(q) < 2:
+        return {"results": []}
+    with neo4j_store() as store:
+        return {"results": store.search_files(q, limit=limit, repo_path=repo_path)}
 
 @router.post("/query")
 async def query(request: QueryRequest) -> dict:

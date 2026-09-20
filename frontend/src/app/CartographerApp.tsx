@@ -3,56 +3,60 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   analyzeImpact,
-  askQuestion,
-  generateSummaries,
   getGraph,
   getOverview,
   getRepositories,
+  getFiles,
+  getFileDetail,
+  askQuestion,
   GraphData,
-  LoadBearingFile,
   RepositoryInfo,
   scanRepo,
-  SemanticMatch,
+  FileDetail,
 } from "../lib/api";
-import { HeroSection } from "../components/HeroSection";
-import { StatusBand } from "../components/StatusBand";
-import { RepoBand } from "../components/RepoBand";
-import { MetricsRow } from "../components/MetricsRow";
-import { GraphPanel } from "../components/GraphPanel";
-import { NodeDetailDrawer } from "../components/NodeDetailDrawer";
-import { LoadBearingFiles } from "../components/LoadBearingFiles";
-import { AskPanel } from "../components/AskPanel";
-import { ImpactPanel } from "../components/ImpactPanel";
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels";
 import { ToastContainer, ToastItem, createToast } from "../components/Toast";
+import { EmptyWorkspace } from "../components/EmptyWorkspace";
+import { WorkspaceTopbar } from "../components/WorkspaceTopbar";
+import { RepositoryExplorer } from "../components/RepositoryExplorer";
+import { GraphPanel } from "../components/GraphPanel";
+import { GraphToolbar } from "../components/GraphToolbar";
+import { Inspector } from "../components/Inspector";
+import { CommandPalette } from "../components/CommandPalette";
+import { AskPanel } from "../components/AskPanel";
 
 type Props = {
   defaultRepoPath: string;
 };
 
 export default function CartographerApp({ defaultRepoPath }: Props) {
+  // Workspace state
   const [repoPath, setRepoPath] = useState(defaultRepoPath);
-  const [status, setStatus] = useState("Ready to map a repository.");
-  const [overview, setOverview] = useState({ files: 0, symbols: 0, avg_score: 0 });
-  const [riskyFiles, setRiskyFiles] = useState<LoadBearingFile[]>([]);
-  const [repositories, setRepositories] = useState<RepositoryInfo[]>([]);
   const [activeRepoPath, setActiveRepoPath] = useState(defaultRepoPath);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [fileDetail, setFileDetail] = useState<FileDetail | null>(null);
+  const [pathPrefix, setPathPrefix] = useState<string | null>(null);
+  const [graphMode, setGraphMode] = useState<"architecture" | "risk" | "recent">("architecture");
+  const [impactMode, setImpactMode] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  
+  // Data state
+  const [repositories, setRepositories] = useState<RepositoryInfo[]>([]);
+  const [overview, setOverview] = useState({ files: 0, symbols: 0, avg_score: 0 });
+  const [files, setFiles] = useState<Array<any>>([]);
   const [graph, setGraph] = useState<GraphData>({ nodes: [], edges: [] });
   const [graphLimit, setGraphLimit] = useState(80);
-  const [question, setQuestion] = useState("What are the riskiest parts of this codebase?");
-  const [answer, setAnswer] = useState("");
-  const [semanticMatches, setSemanticMatches] = useState<SemanticMatch[]>([]);
-  const [selectedFile, setSelectedFile] = useState("");
-  const [impact, setImpact] = useState("");
-  const [summarizeOnScan, setSummarizeOnScan] = useState(true);
-  const [summaryStatus, setSummaryStatus] = useState("");
-  const [drawerFile, setDrawerFile] = useState<string | null>(null);
 
+  // Status state
   const [loadingScan, setLoadingScan] = useState(false);
-  const [loadingAsk, setLoadingAsk] = useState(false);
-  const [loadingImpact, setLoadingImpact] = useState(false);
-  const [loadingSummaries, setLoadingSummaries] = useState(false);
-
+  const [status, setStatus] = useState("Ready to map a repository.");
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [semanticMatches, setSemanticMatches] = useState<any[]>([]);
+  const [loadingAsk, setLoadingAsk] = useState(false);
+
   const addToast = useCallback(
     (message: string, type: ToastItem["type"] = "error") =>
       setToasts((prev) => [...prev, createToast(message, type)]),
@@ -63,53 +67,59 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
     []
   );
 
+  async function handleAsk(q: string) {
+    setQuestion(q);
+    setAnswer("");
+    setSemanticMatches([]);
+    setLoadingAsk(true);
+    try {
+      const result = await askQuestion(q, activeRepoPath);
+      setAnswer(result.answer);
+      setSemanticMatches(result.semantic_matches || []);
+    } catch (err: unknown) {
+      addToast(err instanceof Error ? err.message : "Query failed");
+    } finally {
+      setLoadingAsk(false);
+    }
+  }
+
   async function refresh(repoScope?: string) {
     try {
       const repoData = await getRepositories();
-      const resolvedScope =
-        repoScope || activeRepoPath || defaultRepoPath || repoData.repositories[0]?.root_path || "";
-      const [overviewData, graphData] = await Promise.all([
-        getOverview(resolvedScope),
-        getGraph(resolvedScope, graphLimit),
-      ]);
       setRepositories(repoData.repositories);
-      if (resolvedScope && resolvedScope !== activeRepoPath) {
-        setActiveRepoPath(resolvedScope);
-      }
-      if (resolvedScope && !repoPath) {
-        setRepoPath(resolvedScope);
-      }
+      
+      const resolvedScope = repoScope || activeRepoPath || defaultRepoPath || repoData.repositories[0]?.root_path || "";
+      if (!resolvedScope) return;
+
+      if (resolvedScope !== activeRepoPath) setActiveRepoPath(resolvedScope);
+      if (!repoPath) setRepoPath(resolvedScope);
+
+      const [overviewData, graphData, filesData] = await Promise.all([
+        getOverview(resolvedScope),
+        getGraph(resolvedScope, graphLimit), // We will add pathPrefix later
+        getFiles(resolvedScope)
+      ]);
+
       setOverview({
         files: overviewData.overview.files ?? 0,
         symbols: overviewData.overview.symbols ?? 0,
         avg_score: overviewData.overview.avg_score ?? 0,
       });
-      setRiskyFiles(overviewData.load_bearing);
       setGraph(graphData);
-      if (!selectedFile && overviewData.load_bearing[0]) {
-        setSelectedFile(overviewData.load_bearing[0].path);
-      }
+      setFiles(filesData.files);
     } catch {
-      // The backend may not be running on initial page load.
+      // Backend may not be ready
     }
   }
 
-  async function handleScan() {
+  async function handleScan(path: string, summarize: boolean) {
     setLoadingScan(true);
     setStatus("Scanning source, mining Git history, and writing Neo4j graph...");
     try {
-      const result = await scanRepo(repoPath, summarizeOnScan);
+      const result = await scanRepo(path, summarize);
       setActiveRepoPath(result.root_path);
-      setStatus(
-        `Indexed ${result.files} files, ${result.symbols} symbols, ${result.imports} dependency edges.`
-      );
-      if (result.summaries) {
-        setSummaryStatus(
-          `Summaries: ${result.summaries.created}/${result.summaries.requested} generated.`
-        );
-      } else {
-        setSummaryStatus("");
-      }
+      setRepoPath(result.root_path);
+      setStatus(`Indexed ${result.files} files, ${result.symbols} symbols, ${result.imports} edges.`);
       await refresh(result.root_path);
       addToast("Repository scanned successfully.", "success");
     } catch (err: unknown) {
@@ -124,162 +134,141 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
   async function handleRepoChange(path: string) {
     setActiveRepoPath(path);
     setRepoPath(path);
-    setAnswer("");
-    setImpact("");
-    setSelectedFile("");
-    setDrawerFile(null);
+    setSelectedFile(null);
+    setFileDetail(null);
+    setImpactMode(false);
     setStatus(`Viewing ${path}`);
     await refresh(path);
   }
 
-  async function handleAsk() {
-    setLoadingAsk(true);
-    setAnswer("");
-    setSemanticMatches([]);
+  // The universal selection action
+  async function selectFile(path: string, source: "graph" | "tree" | "search" | "risk" | "ai" | "inspector") {
+    setSelectedFile(path);
     try {
-      const result = await askQuestion(question, activeRepoPath);
-      setAnswer(result.answer);
-      setSemanticMatches(result.semantic_matches ?? []);
+      const detail = await getFileDetail(path, activeRepoPath);
+      setFileDetail(detail);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Query failed";
+      const msg = err instanceof Error ? err.message : "Failed to load file details";
       addToast(msg);
-    } finally {
-      setLoadingAsk(false);
     }
   }
 
-  async function handleImpact(path = selectedFile) {
-    if (!path) return;
-    setSelectedFile(path);
-    setLoadingImpact(true);
-    setImpact("");
+  const [impactData, setImpactData] = useState<any>(null);
+
+  async function handleTraceImpact(path: string) {
+    setImpactMode(true);
+    setImpactData(null);
     try {
       const result = await analyzeImpact(path, 3, activeRepoPath);
-      setImpact(result.explanation);
+      setImpactData(result);
+      addToast(`Impact analysis complete: ${result.direct_dependents.length} direct, ${result.transitive_dependents.length} transitive dependents.`, "success");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Impact analysis failed";
-      addToast(msg);
-    } finally {
-      setLoadingImpact(false);
+      addToast(err instanceof Error ? err.message : "Impact analysis failed");
+      setImpactMode(false);
     }
-  }
-
-  async function handleSummaries() {
-    if (!activeRepoPath) return;
-    setLoadingSummaries(true);
-    setSummaryStatus("Generating summaries and embeddings...");
-    try {
-      const result = await generateSummaries(activeRepoPath);
-      setSummaryStatus(
-        `Summaries: ${result.status.created}/${result.status.requested} generated.`
-      );
-      addToast("Summaries generated.", "success");
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Summary generation failed";
-      setSummaryStatus("");
-      addToast(msg);
-    } finally {
-      setLoadingSummaries(false);
-    }
-  }
-
-  function handleNodeClick(filePath: string) {
-    setDrawerFile(filePath);
-  }
-
-  async function handleExpandGraph() {
-    const nextLimit = Math.min(graphLimit + 80, 400);
-    setGraphLimit(nextLimit);
-    try {
-      const graphData = await getGraph(activeRepoPath, nextLimit);
-      setGraph(graphData);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to expand graph";
-      addToast(msg);
-    }
-  }
-
-  function handleDrawerImpact(path: string) {
-    setDrawerFile(null);
-    handleImpact(path);
   }
 
   useEffect(() => {
     refresh();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const activeRepo = repositories.find((r) => r.root_path === activeRepoPath);
+  const showEmptyState = !activeRepo && repositories.length === 0 && !loadingScan;
+
   return (
-    <main className="dashboardShell">
-      <aside className="sidebar">
-        <div className="sidebarHeader">
-          <h1>Cartographer</h1>
-        </div>
-        
-        <div className="sidebarScroll">
-          <HeroSection
-            repoPath={repoPath}
-            onRepoPathChange={setRepoPath}
-            onScan={handleScan}
-            loading={loadingScan}
+    <div className="workspace-shell">
+      {showEmptyState ? (
+        <EmptyWorkspace
+          defaultRepoPath={defaultRepoPath}
+          onScan={handleScan}
+          loading={loadingScan}
+        />
+      ) : (
+        <>
+          <WorkspaceTopbar
+            repoName={activeRepo?.name || "Codebase"}
+            branch="main" // Can add real branch detection later
+            onOpenCommandPalette={() => setCommandPaletteOpen(true)}
           />
-          <RepoBand
-            activeRepoPath={activeRepoPath}
-            repositories={repositories}
-            summarizeOnScan={summarizeOnScan}
-            onRepoChange={handleRepoChange}
-            onSummarizeOnScanChange={setSummarizeOnScan}
-            onGenerateSummaries={handleSummaries}
-            loadingSummaries={loadingSummaries}
-          />
-        </div>
-        
-        <div className="sidebarFooter">
-          <StatusBand status={status} summaryStatus={summaryStatus} />
-        </div>
-      </aside>
+          
+          <div className="workspace-main">
+            <PanelGroup orientation="horizontal" style={{ width: '100%', height: '100%' }}>
+              <Panel defaultSize="20" minSize="15" maxSize="35">
+                <RepositoryExplorer
+                  repositories={repositories}
+                  activeRepoPath={activeRepoPath}
+                  files={files}
+                  selectedFile={selectedFile}
+                  onSelectFile={(path) => selectFile(path, "tree")}
+                  onRepoChange={handleRepoChange}
+                  onRescan={() => handleScan(activeRepoPath, false)}
+                  onViewChange={setGraphMode}
+                />
+              </Panel>
 
-      <div className="centerStage">
-        <header className="topbar">
-          <MetricsRow overview={overview} riskyFileCount={riskyFiles.length} />
-        </header>
-        <div className="mapContainer">
-          <GraphPanel
-            graph={graph}
-            onNodeClick={handleNodeClick}
-            onExpand={handleExpandGraph}
-          />
-        </div>
-      </div>
+              <PanelResizeHandle className="resize-handle" />
 
-      <aside className="rightSidebar">
-        <div className="sidebarScroll">
-          <LoadBearingFiles files={riskyFiles} onFileClick={handleNodeClick} />
-          <AskPanel
-            question={question}
-            onQuestionChange={setQuestion}
-            onAsk={handleAsk}
-            answer={answer}
-            semanticMatches={semanticMatches}
-            loading={loadingAsk}
-          />
-          <ImpactPanel
-            selectedFile={selectedFile}
-            onSelectedFileChange={setSelectedFile}
-            onTrace={() => handleImpact()}
-            impact={impact}
-            loading={loadingImpact}
-          />
-        </div>
-      </aside>
+              <Panel minSize="30">
+                <div className="graph-workspace">
+                  <GraphPanel
+                    graph={graph}
+                    selectedFile={selectedFile}
+                    impactMode={impactMode}
+                    impactData={impactData}
+                    onNodeClick={(path) => selectFile(path, "graph")}
+                    onExpand={() => {}}
+                  />
+                  <GraphToolbar
+                    overview={overview}
+                    totalFiles={graph.total_files || files.length}
+                    totalEdges={graph.total_edges || graph.edges.length}
+                    avgRisk={overview.avg_score}
+                    onFit={() => {}}
+                    onZoomIn={() => {}}
+                    onZoomOut={() => {}}
+                    onFilterToggle={() => {}}
+                  />
+                </div>
+              </Panel>
 
-      <NodeDetailDrawer
-        filePath={drawerFile}
-        repoPath={activeRepoPath}
-        onClose={() => setDrawerFile(null)}
-        onTraceImpact={handleDrawerImpact}
+              {selectedFile && fileDetail && (
+                <PanelResizeHandle className="resize-handle" />
+              )}
+              {selectedFile && fileDetail && (
+                <Panel defaultSize="25" minSize="20" maxSize="45">
+                  <Inspector
+                    file={fileDetail}
+                    onClose={() => setSelectedFile(null)}
+                    onSelectFile={(path) => selectFile(path, "inspector")}
+                    onTraceImpact={handleTraceImpact}
+                  />
+                </Panel>
+              )}
+            </PanelGroup>
+            
+            <div className="ai-investigation-layer">
+              <AskPanel
+                question={question}
+                answer={answer}
+                semanticMatches={semanticMatches}
+                loading={loadingAsk}
+                onSelectFile={selectFile}
+                onClear={() => { setQuestion(""); setAnswer(""); setSemanticMatches([]); }}
+              />
+            </div>
+          </div>
+        </>
+      )}
+
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        activeRepoPath={activeRepoPath}
+        onSelectFile={selectFile}
+        onAsk={handleAsk}
       />
 
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-    </main>
+    </div>
   );
 }

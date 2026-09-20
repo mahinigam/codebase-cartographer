@@ -1,20 +1,46 @@
-import { useMemo, useCallback } from "react";
+import React, { useMemo, useCallback } from "react";
 import dagre from "@dagrejs/dagre";
-import ReactFlow, { Background, MiniMap, Node, Edge, Handle, Position } from "reactflow";
+import ReactFlow, { Background, MiniMap, Node, Edge, Handle, Position, useReactFlow, ReactFlowProvider } from "reactflow";
 import "reactflow/dist/style.css";
 import { GraphData } from "../lib/api";
 
 type Props = {
   graph: GraphData;
+  selectedFile?: string | null;
+  impactMode?: boolean;
+  impactData?: any;
   onNodeClick: (filePath: string) => void;
   onExpand?: () => void;
 };
 
-function CartographerNode({ data }: { data: { label: string; score: number } }) {
+type NodeData = {
+  label: string;
+  score: number;
+  language?: string;
+  loc?: number;
+  dependents?: number;
+  isHighRisk?: boolean;
+  isSelected?: boolean;
+};
+
+function CartographerNode({ data }: { data: NodeData }) {
+  const shortName = data.label.split("/").pop();
+  const parentDir = data.label.split("/").slice(0, -1).join("/");
+
   return (
-    <div className={data.score > 50 ? "graphNode isRisky" : "graphNode"}>
+    <div className={`graph-node ${data.isHighRisk ? "high-risk" : ""} ${data.isSelected ? "selected" : ""}`}>
       <Handle type="target" position={Position.Top} style={{ visibility: 'hidden' }} />
-      {data.label}
+      <div className="node-content">
+        <div className="node-parent">{parentDir}</div>
+        <div className="node-name">{shortName}</div>
+        <div className="node-meta">
+          {data.language && <span>{data.language} · </span>}
+          {data.loc !== undefined && <span>{data.loc} LOC</span>}
+        </div>
+        {data.dependents !== undefined && data.dependents > 0 && (
+          <div className="node-deps">{data.dependents} dependents</div>
+        )}
+      </div>
       <Handle type="source" position={Position.Bottom} style={{ visibility: 'hidden' }} />
     </div>
   );
@@ -29,7 +55,7 @@ function layoutWithDagre(nodes: Node[], edges: Edge[]): Node[] {
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 90 });
 
-  nodes.forEach((node) => g.setNode(node.id, { width: 200, height: 50 }));
+  nodes.forEach((node) => g.setNode(node.id, { width: 220, height: 80 }));
   edges.forEach((edge) => g.setEdge(edge.source, edge.target));
 
   dagre.layout(g);
@@ -38,51 +64,106 @@ function layoutWithDagre(nodes: Node[], edges: Edge[]): Node[] {
     const pos = g.node(node.id);
     return {
       ...node,
-      position: { x: (pos?.x ?? 0) - 100, y: (pos?.y ?? 0) - 25 },
+      position: { x: (pos?.x ?? 0) - 110, y: (pos?.y ?? 0) - 40 },
     };
   });
 }
 
-export function GraphPanel({ graph, onNodeClick, onExpand }: Props) {
+function GraphPanelContent({ graph, selectedFile, impactMode, impactData, onNodeClick, onExpand }: Props) {
+  const { fitView } = useReactFlow();
+
   const { nodes, edges } = useMemo(() => {
     const rawNodes: Node[] = graph.nodes.map((node) => ({
       id: node.id,
       type: "cartographerNode",
-      data: { label: node.label, score: node.score },
+      data: { 
+        label: node.label, 
+        score: node.score,
+        language: node.language,
+        loc: node.loc,
+        dependents: node.fan_in,
+        isHighRisk: node.score > 75,
+        isSelected: selectedFile === node.label,
+      },
       position: { x: 0, y: 0 },
     }));
 
-    const rawEdges: Edge[] = graph.edges.map((edge, i) => ({
-      id: `${edge.source}-${edge.target}-${i}`,
-      source: edge.source,
-      target: edge.target,
-      animated: true,
-      style: { stroke: 'rgba(255, 255, 255, 0.15)', strokeWidth: 1.5 }
-    }));
+    const hasSelection = Boolean(selectedFile) || impactMode;
+    let selectedNeighbors = new Set<string>();
+    
+    if (impactMode && impactData) {
+      selectedNeighbors.add(impactData.target);
+      impactData.direct_dependents.forEach((d: string) => selectedNeighbors.add(d));
+      impactData.transitive_dependents.forEach((d: any) => selectedNeighbors.add(d.path));
+    } else if (selectedFile) {
+      const selectedId = rawNodes.find(n => n.data.label === selectedFile)?.id;
+      if (selectedId) {
+        selectedNeighbors.add(selectedId);
+        graph.edges.forEach(e => {
+          if (e.source === selectedId) selectedNeighbors.add(e.target);
+          if (e.target === selectedId) selectedNeighbors.add(e.source);
+        });
+      }
+    }
+
+    const rawEdges: Edge[] = graph.edges.map((edge, i) => {
+      const isRelated = selectedNeighbors.has(edge.source) && selectedNeighbors.has(edge.target);
+      const isDimmed = hasSelection && !isRelated;
+
+      let strokeColor = isRelated ? 'rgba(255, 255, 255, 0.4)' : (isDimmed ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.15)');
+      if (impactMode && isRelated) {
+         strokeColor = '#f43f5e';
+      }
+
+      return {
+        id: `${edge.source}-${edge.target}-${i}`,
+        source: edge.source,
+        target: edge.target,
+        animated: impactMode && isRelated,
+        style: { 
+          stroke: strokeColor, 
+          strokeWidth: isRelated ? 2 : 1.5 
+        }
+      };
+    });
 
     const laidNodes = layoutWithDagre(rawNodes, rawEdges);
+    
+    if (hasSelection) {
+      laidNodes.forEach(node => {
+        if (!selectedNeighbors.has(node.id)) {
+          node.style = { opacity: 0.3 };
+        } else {
+          node.style = { opacity: 1, zIndex: 10 };
+          if (impactMode && node.data.label !== impactData?.target) {
+            node.className = (node.className || "") + " impacted";
+          }
+        }
+      });
+    }
+
     return { nodes: laidNodes, edges: rawEdges };
-  }, [graph]);
+  }, [graph, selectedFile, impactMode, impactData]);
 
   const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     onNodeClick(node.data.label);
   }, [onNodeClick]);
 
-  const totalFiles = graph.total_files ?? nodes.length;
-  const truncated = Boolean(graph.truncated);
-
   return (
-    <div className="graphPanel">
-      <div className="graphStatsOverlay">
-        <span>{nodes.length}{totalFiles > nodes.length ? ` of ${totalFiles}` : ""} files</span>
-        <span className="dotSeparator">·</span>
-        <span>{edges.length} edges</span>
-        {truncated && onExpand && (graph.node_limit ?? 80) < 400 && (
-           <button onClick={onExpand} className="ghostButton">Load more</button>
-        )}
-      </div>
+    <div className="graph-panel">
+      {graph.clusters && graph.clusters.length > 0 && (
+        <div className="architecture-scope">
+          <span className="scope-label">ARCHITECTURE SCOPE</span>
+          {graph.clusters.map(c => (
+            <button key={c.name} className="cluster-btn">
+              {c.name} <span className="count">{c.files}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <ReactFlow
+        style={{ width: '100%', height: '100%' }}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
@@ -100,11 +181,19 @@ export function GraphPanel({ graph, onNodeClick, onExpand }: Props) {
       >
         <Background color="rgba(255,255,255,0.06)" gap={24} size={2} />
         <MiniMap 
-          nodeColor={(n) => n.data.score > 50 ? '#f43f5e' : 'rgba(255,255,255,0.3)'}
+          nodeColor={(n) => n.data.isHighRisk ? '#f43f5e' : 'rgba(255,255,255,0.3)'}
           maskColor="rgba(0,0,0,0.5)"
           style={{ backgroundColor: 'rgba(10,10,15,0.8)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
         />
       </ReactFlow>
     </div>
+  );
+}
+
+export function GraphPanel(props: Props) {
+  return (
+    <ReactFlowProvider>
+      <GraphPanelContent {...props} />
+    </ReactFlowProvider>
   );
 }

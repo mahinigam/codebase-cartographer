@@ -1,54 +1,74 @@
-import { Search } from "lucide-react";
+import React from "react";
+import { Bot, FileText, ChevronRight } from "lucide-react";
 import { SemanticMatch } from "../lib/api";
 import { MarkdownView } from "./MarkdownView";
 import { Spinner } from "./Spinner";
 
 type Props = {
   question: string;
-  onQuestionChange: (q: string) => void;
-  onAsk: () => void;
   answer: string;
   semanticMatches: SemanticMatch[];
   loading: boolean;
+  onSelectFile: (path: string, source: any) => void;
+  onClear: () => void;
 };
 
 export function AskPanel({
   question,
-  onQuestionChange,
-  onAsk,
   answer,
   semanticMatches,
   loading,
+  onSelectFile,
+  onClear,
 }: Props) {
+  if (!question && !answer && !loading) return null;
+
   return (
-    <div className="panel" id="ask-panel">
-      <h2>Ask Cartographer</h2>
-      <textarea
-        id="question-input"
-        value={question}
-        onChange={(e) => onQuestionChange(e.target.value)}
-        placeholder="What are the riskiest parts of this codebase?"
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) onAsk();
-        }}
-      />
-      <button id="ask-button" onClick={onAsk} disabled={loading}>
-        {loading ? <Spinner /> : <Search size={18} />}
-        {loading ? "Thinking…" : "Ask"}
-      </button>
-      {answer && <MarkdownView content={answer} />}
-      {semanticMatches.length > 0 && (
-        <div className="semantic">
-          <h3>Semantic Matches</h3>
-          {semanticMatches.map((match, index) => (
-            <div key={`${match.path}-${index}`}>
-              <strong>{match.path}</strong>
-              <span>score {match.score.toFixed(3)}</span>
-              <p>{match.summary}</p>
-            </div>
-          ))}
-        </div>
-      )}
+    <div className="ask-panel">
+      <div className="ask-header">
+        <Bot size={16} className="bot-icon" />
+        <span className="question-text">{question}</span>
+        <button className="ghost-btn" onClick={onClear}>Clear</button>
+      </div>
+
+      <div className="ask-content">
+        {loading ? (
+          <div className="loading-state">
+            <Spinner />
+            <span>Analyzing architecture...</span>
+          </div>
+        ) : (
+          <>
+            {answer && (
+              <div className="answer-box">
+                <MarkdownView content={answer} />
+              </div>
+            )}
+            
+            {semanticMatches.length > 0 && (
+              <div className="evidence-box">
+                <div className="evidence-title">EVIDENCE & MATCHES</div>
+                <div className="evidence-list">
+                  {semanticMatches.map((match, index) => (
+                    <div 
+                      key={`${match.path}-${index}`} 
+                      className="evidence-item clickable"
+                      onClick={() => onSelectFile(match.path, "ai")}
+                    >
+                      <FileText size={14} className="item-icon" />
+                      <div className="item-info">
+                        <div className="item-path">{match.path}</div>
+                        <div className="item-summary">{match.summary.substring(0, 80)}...</div>
+                      </div>
+                      <ChevronRight size={14} className="action-icon" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

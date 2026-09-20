@@ -25,7 +25,7 @@ export type LoadBearingFile = {
 };
 
 export type GraphData = {
-  nodes: Array<{ id: string; label: string; score: number; labels: string[] }>;
+  nodes: Array<{ id: string; label: string; score: number; labels: string[]; language?: string; loc?: number; fan_in?: number; fan_out?: number; churn?: number; complexity?: number }>;
   edges: Array<{ source: string; target: string; type: string }>;
   clusters?: Array<{ name: string; files: number; avg_score: number; max_score: number }>;
   total_files?: number;
@@ -65,7 +65,17 @@ export type FileDetail = {
   imports: string[];
   dependents: string[];
   external_deps: string[];
-  summary: string | null;
+  summary?: string;
+  risk_components?: {
+    fan_in: number;
+    fan_out: number;
+    complexity: number;
+    churn_count: number;
+    fan_in_normalized: number;
+    complexity_normalized: number;
+    churn_normalized: number;
+    fan_out_normalized: number;
+  };
 };
 
 export async function scanRepo(path: string, summarize = false, incremental = true) {
@@ -79,12 +89,16 @@ export async function getRepositories(): Promise<{ repositories: RepositoryInfo[
   return request("/api/repositories");
 }
 
+export async function getFiles(repoPath?: string): Promise<{ files: Array<{ path: string; language: string; loc: number; complexity: number; churn_count: number; load_bearing_score: number }> }> {
+  return request(withRepoPath("/api/files", repoPath));
+}
+
 export async function getOverview(repoPath?: string): Promise<Overview> {
   return request(withRepoPath("/api/overview", repoPath));
 }
 
-export async function getGraph(repoPath?: string, limit = 80): Promise<GraphData> {
-  return request(withQuery("/api/graph", { repo_path: repoPath, limit }));
+export async function getGraph(repoPath?: string, limit = 80, pathPrefix?: string): Promise<GraphData> {
+  return request(withQuery("/api/graph", { repo_path: repoPath, limit, path_prefix: pathPrefix }));
 }
 
 export async function askQuestion(question: string, repoPath?: string): Promise<AskResponse> {
@@ -92,6 +106,10 @@ export async function askQuestion(question: string, repoPath?: string): Promise<
     method: "POST",
     body: JSON.stringify({ question, repo_path: repoPath })
   });
+}
+
+export async function searchFiles(query: string, repoPath?: string): Promise<{ results: any[] }> {
+  return request(withQuery("/api/search", { q: query, repo_path: repoPath }));
 }
 
 export async function analyzeImpact(path: string, depth = 3, repoPath?: string) {
