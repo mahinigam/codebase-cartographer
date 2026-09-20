@@ -16,10 +16,11 @@ Large codebases are notoriously difficult to change safely because their real ar
 
 ## Architecture & Features
 
-### The Cartographer Map Engine
-- **3-Column "Pro Tool" Interface**: Modeled after industry-standard creative and engineering tools, providing a dedicated workspace for repository management, an isolated central map canvas, and a dedicated right-hand inspector for analysis tools.
-- **Interactive Infinite Canvas**: Powered by ReactFlow, the center stage provides a full-bleed, hardware-accelerated interactive map. Seamlessly pan and zoom through your codebase architecture with trackpad gestures.
-- **Glassmorphic MiniMap**: Instantly locate high-risk clusters across massive repositories using the real-time radar MiniMap.
+### The Cartographer Environment
+- **Pro-Grade Resizable Layout**: Modeled after industry-standard engineering tools (like Cursor and Linear), featuring a dedicated dark-slate workspace with fully resizable left (Repository Explorer), center (Graph Canvas), and right (Inspector) panels.
+- **Interactive Infinite Canvas**: Powered by ReactFlow, the center stage provides a full-bleed, hardware-accelerated interactive architecture map. Seamlessly pan and zoom through your codebase with trackpad gestures.
+- **Global Command Palette**: Instantly jump to files, search for symbols, or ask architectural questions from anywhere using the `Cmd+K` command palette.
+- **Real-time Glassmorphic Overlays**: Locate high-risk clusters across massive repositories using the real-time radar MiniMap and floating toolbars.
 
 ### Core Analysis Engine
 - **Knowledge Graph**: Files, symbols, imports, and external dependencies are securely modeled and stored in a local Neo4j database.
@@ -85,12 +86,12 @@ docker compose up --build
 
 ## Usage Workflow
 
-1. Paste an absolute local repository path into the Left Sidebar and click **Analyze**.
+1. Open Cartographer and you will be greeted by the **Landing Page**. Paste an absolute local repository path into the form and click **Analyze**.
 2. The engine will extract files, symbols, imports, and Git history into the Neo4j graph.
-3. Click **Generate Summaries** to asynchronously create AI-powered file summaries and embeddings.
-4. **Explore the Map**: Use your trackpad to zoom and pan the ReactFlow canvas. Click any node to open the **File Detail Drawer**.
-5. **Ask Cartographer**: Query the graph with natural language using the Right Inspector.
-6. **Impact Analysis**: Select a node on the map and run a Trace in the Right Inspector to highlight the dependency ripple effect.
+3. Once loaded, the workspace opens. The left **Repository Explorer** lets you browse the codebase tree and track risk metrics.
+4. **Explore the Map**: Use your trackpad to zoom and pan the ReactFlow canvas in the center. Click any node to open the right-hand **Inspector Panel**.
+5. **Ask Cartographer**: Press `Cmd+K` to open the Command Palette, or use the Ask panel to query the graph with natural language.
+6. **Impact Analysis**: Select a node on the map and run a Trace in the Inspector to highlight the dependency ripple effect across the graph.
 
 ## Security & Privacy
 
