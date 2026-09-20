@@ -10,43 +10,47 @@ logger = logging.getLogger(__name__)
 
 class LLMClient:
     async def complete(self, prompt: str) -> str:
-        if settings.llm_provider == "gemini" and settings.gemini_api_key:
-            for _ in range(5):
+        providers = [settings.llm_provider, settings.fallback_llm_provider]
+        for provider in providers:
+            if provider == "gemini" and settings.gemini_api_key:
+                for _ in range(5):
+                    try:
+                        return await self._gemini(prompt)
+                    except httpx.HTTPStatusError as exc:
+                        if exc.response.status_code == 429:
+                            await asyncio.sleep(5)
+                            continue
+                        logger.warning(f"Gemini completion failed: {exc}")
+                    except httpx.HTTPError as exc:
+                        logger.warning(f"Gemini completion request failed: {exc}")
+                    break
+            elif provider == "ollama":
                 try:
-                    return await self._gemini(prompt)
-                except httpx.HTTPStatusError as exc:
-                    if exc.response.status_code == 429:
-                        await asyncio.sleep(5)
-                        continue
-                    logger.warning(f"Gemini completion failed: {exc}")
+                    return await self._ollama(prompt)
                 except httpx.HTTPError as exc:
-                    logger.warning(f"Gemini completion request failed: {exc}")
-                break
-        if settings.fallback_llm_provider == "ollama":
-            try:
-                return await self._ollama(prompt)
-            except httpx.HTTPError as exc:
-                logger.warning(f"Ollama completion failed: {exc}")
+                    logger.warning(f"Ollama completion failed: {exc}")
         return self._deterministic_fallback(prompt)
 
     async def embed(self, text: str, task: str = "RETRIEVAL_DOCUMENT") -> list[float]:
-        if settings.embedding_provider == "gemini" and settings.gemini_api_key:
-            for _ in range(5):
+        providers = [settings.embedding_provider, settings.fallback_embedding_provider]
+        for provider in providers:
+            if provider == "gemini" and settings.gemini_api_key:
+                for _ in range(5):
+                    try:
+                        return await self._gemini_embed(text, task)
+                    except httpx.HTTPStatusError as exc:
+                        if exc.response.status_code == 429:
+                            await asyncio.sleep(5)
+                            continue
+                        logger.warning(f"Gemini embedding failed: {exc}")
+                    except httpx.HTTPError as exc:
+                        logger.warning(f"Gemini embedding request failed: {exc}")
+                    break
+            elif provider == "ollama":
                 try:
-                    return await self._gemini_embed(text, task)
-                except httpx.HTTPStatusError as exc:
-                    if exc.response.status_code == 429:
-                        await asyncio.sleep(5)
-                        continue
-                    logger.warning(f"Gemini embedding failed: {exc}")
+                    return await self._ollama_embed(text)
                 except httpx.HTTPError as exc:
-                    logger.warning(f"Gemini embedding request failed: {exc}")
-                break
-        if settings.fallback_embedding_provider == "ollama":
-            try:
-                return await self._ollama_embed(text)
-            except httpx.HTTPError as exc:
-                logger.warning(f"Ollama embedding failed: {exc}")
+                    logger.warning(f"Ollama embedding failed: {exc}")
         return []
 
     async def _gemini(self, prompt: str) -> str:
