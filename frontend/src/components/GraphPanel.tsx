@@ -3,6 +3,7 @@ import dagre from "@dagrejs/dagre";
 import ReactFlow, { Background, MiniMap, Node, Edge, Handle, Position, useReactFlow, ReactFlowProvider } from "reactflow";
 import "reactflow/dist/style.css";
 import { GraphData } from "../lib/api";
+import { GraphToolbar } from "./GraphToolbar";
 
 type Props = {
   graph: GraphData;
@@ -11,6 +12,11 @@ type Props = {
   impactData?: any;
   onNodeClick: (filePath: string) => void;
   onExpand?: () => void;
+  overview?: any;
+  totalFiles?: number;
+  totalEdges?: number;
+  avgRisk?: number;
+  onFilterToggle?: () => void;
 };
 
 type NodeData = {
@@ -69,8 +75,20 @@ function layoutWithDagre(nodes: Node[], edges: Edge[]): Node[] {
   });
 }
 
-function GraphPanelContent({ graph, selectedFile, impactMode, impactData, onNodeClick, onExpand }: Props) {
-  const { fitView } = useReactFlow();
+function GraphPanelContent({ 
+  graph, 
+  selectedFile, 
+  impactMode, 
+  impactData, 
+  onNodeClick, 
+  onExpand,
+  overview,
+  totalFiles,
+  totalEdges,
+  avgRisk,
+  onFilterToggle
+}: Props) {
+  const { fitView, zoomIn, zoomOut } = useReactFlow();
 
   const { nodes, edges } = useMemo(() => {
     const rawNodes: Node[] = graph.nodes.map((node) => ({
@@ -186,6 +204,19 @@ function GraphPanelContent({ graph, selectedFile, impactMode, impactData, onNode
           style={{ backgroundColor: 'rgba(10,10,15,0.8)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
         />
       </ReactFlow>
+
+      {overview && (
+        <GraphToolbar
+          overview={overview}
+          totalFiles={totalFiles || 0}
+          totalEdges={totalEdges || 0}
+          avgRisk={avgRisk || 0}
+          onFit={() => fitView({ duration: 800 })}
+          onZoomIn={() => zoomIn({ duration: 300 })}
+          onZoomOut={() => zoomOut({ duration: 300 })}
+          onFilterToggle={onFilterToggle || (() => {})}
+        />
+      )}
     </div>
   );
 }

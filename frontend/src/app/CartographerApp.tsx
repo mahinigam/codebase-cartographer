@@ -20,7 +20,7 @@ import { EmptyWorkspace } from "../components/EmptyWorkspace";
 import { WorkspaceTopbar } from "../components/WorkspaceTopbar";
 import { RepositoryExplorer } from "../components/RepositoryExplorer";
 import { GraphPanel } from "../components/GraphPanel";
-import { GraphToolbar } from "../components/GraphToolbar";
+// GraphToolbar is now rendered inside GraphPanel
 import { Inspector } from "../components/Inspector";
 import { CommandPalette } from "../components/CommandPalette";
 import { AskPanel } from "../components/AskPanel";
@@ -216,16 +216,10 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
                     impactMode={impactMode}
                     impactData={impactData}
                     onNodeClick={(path) => selectFile(path, "graph")}
-                    onExpand={() => {}}
-                  />
-                  <GraphToolbar
                     overview={overview}
                     totalFiles={graph.total_files || files.length}
                     totalEdges={graph.total_edges || graph.edges.length}
                     avgRisk={overview.avg_score}
-                    onFit={() => {}}
-                    onZoomIn={() => {}}
-                    onZoomOut={() => {}}
                     onFilterToggle={() => {}}
                   />
                 </div>
