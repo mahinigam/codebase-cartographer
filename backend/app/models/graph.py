@@ -14,6 +14,22 @@ class CodeFile(BaseModel):
     last_modified: str | None = None
     complexity: int = 0
     load_bearing_score: float = 0
+    # Jev-derived fields (Bond 1, 2, 3, 8, 10)
+    architectural_role: str | None = None
+    architectural_role_confidence: float = 0.0
+    is_test_file: bool = False
+    is_test_probability: float = 0.0
+    test_category: str | None = None
+    framework: str | None = None
+    framework_confidence: float = 0.0
+    architecture_layer: str | None = None
+    semantic_risk_score: float | None = None
+    risk_category: str | None = None
+    is_dead_code: bool = False
+    is_dead_code_probability: float = 0.0
+    dead_code_category: str | None = None
+    needs_summary: bool = True
+    summary_priority: float = 5.0
 
 
 class CodeSymbol(BaseModel):

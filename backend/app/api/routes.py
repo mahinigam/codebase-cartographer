@@ -88,7 +88,7 @@ async def scan(request: ScanRequest, http_request: Request) -> dict:
     with neo4j_store() as store:
         previous_files = store.scan_cache(str(root)) if request.incremental else None
         try:
-            graph = scan_repository(str(root), previous_files=previous_files)
+            graph = await scan_repository(str(root), previous_files=previous_files)
         except (UnsafeRepositoryPath, RepositoryTooLarge) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         store.upsert_repository_graph(graph)
@@ -133,14 +133,14 @@ def files(repo_path: str | None = None) -> dict:
 
 
 @router.get("/graph")
-def graph(
+async def graph(
     limit: int = Query(default=GRAPH_DEFAULT_NODE_LIMIT, ge=1, le=GRAPH_MAX_NODE_LIMIT),
     edge_limit: int = Query(default=GRAPH_DEFAULT_EDGE_LIMIT, ge=1, le=GRAPH_MAX_EDGE_LIMIT),
     repo_path: str | None = None,
     path_prefix: str | None = None,
 ) -> dict:
     with neo4j_store() as store:
-        return store.graph_slice(
+        return await store.graph_slice(
             limit=limit,
             edge_limit=edge_limit,
             repo_path=repo_path,

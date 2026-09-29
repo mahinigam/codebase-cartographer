@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, ChevronDown, ChevronRight, Activity, FileCode, ArrowRight, ArrowLeft, Network, Box } from "lucide-react";
+import { X, ChevronDown, ChevronRight, Activity, FileCode, ArrowRight, ArrowLeft, Network, Box, AlertTriangle } from "lucide-react";
 import { FileDetail } from "../lib/api";
 import { RiskBreakdown } from "./RiskBreakdown";
 
@@ -9,6 +9,7 @@ type Props = {
   onSelectFile: (path: string) => void;
   onTraceImpact: (path: string) => void;
   onAskAboutFile?: (path: string) => void;
+  impactData?: any;
 };
 
 function CollapsibleSection({ title, defaultOpen = true, children, badge }: { title: string, defaultOpen?: boolean, children: React.ReactNode, badge?: number }) {
@@ -25,7 +26,7 @@ function CollapsibleSection({ title, defaultOpen = true, children, badge }: { ti
   );
 }
 
-export function Inspector({ file, onClose, onSelectFile, onTraceImpact, onAskAboutFile }: Props) {
+export function Inspector({ file, onClose, onSelectFile, onTraceImpact, onAskAboutFile, impactData }: Props) {
   const filename = file.path.split("/").pop() || file.path;
   const isHighRisk = file.load_bearing_score > 75;
 
@@ -46,6 +47,24 @@ export function Inspector({ file, onClose, onSelectFile, onTraceImpact, onAskAbo
               Risk {Math.round(file.load_bearing_score)}
             </span>
           </div>
+          {file.risk_category && (
+            <div className={`jev-risk-banner ${file.risk_category}`}>
+              Jev Category: {file.risk_category.replace(/_/g, " ")}
+            </div>
+          )}
+          {file.architectural_role && (
+            <div className="jev-role-badge">Role: {file.architectural_role}</div>
+          )}
+          {file.framework && (
+            <div className="jev-framework-banner">
+              Framework: {file.framework}
+            </div>
+          )}
+          {file.is_dead_code && (
+            <div className="jev-dead-code-banner">
+              <AlertTriangle size={14} /> LIKELY DEAD CODE ({file.dead_code_category})
+            </div>
+          )}
         </div>
 
         <CollapsibleSection title="RISK PROFILE">
@@ -132,6 +151,23 @@ export function Inspector({ file, onClose, onSelectFile, onTraceImpact, onAskAbo
                 </li>
               ))}
             </ul>
+          </CollapsibleSection>
+        )}
+
+        {impactData && impactData.target === file.path && (
+          <CollapsibleSection title="IMPACT TRACE">
+            {impactData.refactor_safety && (
+              <div className={`jev-safety-gate ${impactData.refactor_safety.safe_to_refactor ? 'safe' : 'unsafe'}`} style={{ padding: '8px', marginBottom: '8px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <div style={{ fontWeight: 600 }}>Refactor Safety: {impactData.refactor_safety.safe_to_refactor ? 'SAFE' : 'HIGH RISK'}</div>
+                <div style={{ fontSize: '11px', opacity: 0.8 }}>Probability: {impactData.refactor_safety.safe_probability}</div>
+                <div style={{ fontSize: '11px', marginTop: '4px' }}>Blast Radius: {impactData.refactor_safety.blast_radius}</div>
+                <div style={{ fontSize: '11px', marginTop: '4px' }}>Strategy: {impactData.refactor_safety.recommended_strategy}</div>
+              </div>
+            )}
+            <div className="impact-explanation" style={{ fontSize: '12px', lineHeight: 1.5 }}>
+              {/* Assuming we might want to just render it as text/markdown */}
+              <div dangerouslySetInnerHTML={{ __html: impactData.explanation.replace(/\n/g, "<br>") }} />
+            </div>
           </CollapsibleSection>
         )}
       </div>

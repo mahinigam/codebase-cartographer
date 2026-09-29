@@ -4,11 +4,63 @@ from pathlib import Path
 from app.core.config import settings
 from app.services.llm import llm_client
 from app.services.neo4j_store import Neo4jStore
+from app.services.jev_client import jev_client
 
 
 async def answer_architecture_question(
     store: Neo4jStore, question: str, repo_path: str | None = None
 ) -> dict:
+    # ── Bond 4: Smart query routing via Jev ──
+    route_result = await jev_client.route_query(question)
+
+    if route_result:
+        intent = route_result.get("intent")
+        needs_ai = route_result.get("needs_ai_generation")
+        intent_name = intent.answer if intent else "general-ai-question"
+        skip_gemini = needs_ai and needs_ai.probability is not None and needs_ai.probability < 0.4
+
+        # Fast paths that don't need Gemini
+        if intent_name == "navigate-to-file" or (intent_name == "symbol-lookup" and skip_gemini):
+            matches = store.search_files(question, repo_path=repo_path)
+            return {
+                "answer": _evidence_summary(question, matches),
+                "evidence": matches,
+                "semantic_matches": [],
+                "routed_intent": intent_name,
+            }
+
+        if intent_name == "risk-assessment" and skip_gemini:
+            load_bearing = _load_bearing_matches(store, repo_path)
+            lines = ["### Riskiest Files\n"]
+            for item in load_bearing[:10]:
+                lines.append(
+                    f"- `{item['path']}` — risk score **{item['load_bearing_score']}**"
+                )
+            return {
+                "answer": "\n".join(lines),
+                "evidence": load_bearing,
+                "semantic_matches": [],
+                "routed_intent": intent_name,
+            }
+
+        if intent_name in ("dependency-trace-forward", "dependency-trace-reverse"):
+            # Extract file path from question and redirect to impact
+            matches = store.search_files(question, limit=1, repo_path=repo_path)
+            if matches:
+                target = matches[0]["path"]
+                impact = store.impact_for_file(target, depth=3, repo_path=repo_path)
+                if skip_gemini:
+                    explanation = _format_impact_as_markdown(impact)
+                else:
+                    explanation = await _generate_impact_narrative(impact, target)
+                return {
+                    "answer": explanation,
+                    "evidence": matches,
+                    "semantic_matches": [],
+                    "routed_intent": intent_name,
+                }
+
+    # ── Full pipeline (existing logic, unchanged) ──
     matches = store.search_files(question, repo_path=repo_path)
     if not matches and _asks_about_risk(question):
         matches = _load_bearing_matches(store, repo_path)
@@ -57,6 +109,44 @@ Semantic summary context:
     return {"answer": answer, "evidence": matches, "semantic_matches": semantic_matches}
 
 
+def _format_impact_as_markdown(impact: dict) -> str:
+    """Format impact data as Markdown without using Gemini."""
+    lines = [f"### Impact Analysis for `{impact['target']}`\n"]
+    direct = impact.get("direct_dependents", [])
+    trans = impact.get("transitive_dependents", [])
+    lines.append(f"**{len(direct)}** direct dependents, **{len(trans)}** transitive.\n")
+    if direct:
+        lines.append("#### Direct Dependents")
+        for d in direct:
+            lines.append(f"- `{d}`")
+    if trans:
+        lines.append("\n#### Transitive Dependents")
+        for t in trans[:20]:
+            path = t.get("path", t) if isinstance(t, dict) else t
+            dist = t.get("distance", "?") if isinstance(t, dict) else "?"
+            lines.append(f"- `{path}` (depth {dist})")
+    return "\n".join(lines)
+
+
+async def _generate_impact_narrative(impact: dict, target: str) -> str:
+    """Generate Gemini narrative for impact (existing logic extracted)."""
+    prompt = f"""
+You are Codebase Cartographer, a structural forensics AI assistant.
+Explain the change impact for the file `{target}` based on the dependency results below.
+
+Please format your response in pristine Markdown:
+- Use clear headings (e.g., `### Direct Dependents`, `### Transitive Dependents`,
+  `### Risk Assessment`).
+- Use bullet points to list affected files and modules.
+- Use inline code formatting (`like this`) for file paths.
+- Provide a concise but comprehensive risk assessment for a refactor.
+
+Impact data:
+{impact}
+"""
+    return await llm_client.complete(prompt)
+
+
 def _asks_about_risk(question: str) -> bool:
     cleaned = "".join(character.lower() if character.isalnum() else " " for character in question)
     words = cleaned.split()
@@ -97,6 +187,30 @@ async def explain_impact(
     store: Neo4jStore, path: str, depth: int, repo_path: str | None = None
 ) -> dict:
     impact = store.impact_for_file(path, depth, repo_path=repo_path)
+
+    # ── Bond 6: Jev refactor safety gate ──
+    file_detail = store.file_detail(path, repo_path=repo_path)
+    safety_result = await jev_client.evaluate_refactor_safety(
+        target_path=path,
+        direct_dependents=impact.get("direct_dependents", []),
+        transitive_dependents=impact.get("transitive_dependents", []),
+        target_risk_score=file_detail.get("load_bearing_score", 0) if file_detail else 0,
+        target_complexity=file_detail.get("complexity", 0) if file_detail else 0,
+        target_loc=file_detail.get("loc", 0) if file_detail else 0,
+    )
+
+    if safety_result:
+        safe_dec = safety_result.get("safe_to_refactor")
+        strat_dec = safety_result.get("recommended_strategy")
+        blast_dec = safety_result.get("estimated_blast_radius")
+        impact["refactor_safety"] = {
+            "safe_to_refactor": safe_dec.probability > 0.6 if safe_dec else None,
+            "safe_probability": round(safe_dec.probability, 3) if safe_dec else None,
+            "recommended_strategy": strat_dec.answer if strat_dec else None,
+            "blast_radius": round(blast_dec.value, 1) if blast_dec else None,
+        }
+
+    # Existing Gemini narrative
     prompt = f"""
 You are Codebase Cartographer, a structural forensics AI assistant.
 Explain the change impact for the file `{path}` based on the dependency results below.
@@ -121,16 +235,101 @@ async def generate_summaries_for_repo(
     root = Path(repo_path)
     file_paths = store.file_paths(repo_path)
     if not file_paths:
-        return {"requested": 0, "created": 0, "skipped": 0}
+        return {"requested": 0, "created": 0, "skipped": 0, "triaged_out": 0}
 
     limit = max_files or settings.summary_max_files
-    target_paths = file_paths[:limit]
-    semaphore = asyncio.Semaphore(3)
-    result = {"requested": len(target_paths), "created": 0, "skipped": 0}
+
+    # ── Bond 7: Triage files with Jev before spending Gemini calls ──
+    triaged: list[tuple[str, float]] = []  # (path, priority)
+    triaged_out = 0
+
+    # Get file metadata for triage
+    all_files = store.files_list(repo_path=repo_path)
+    file_meta = {f["path"]: f for f in all_files}
+
+    if jev_client.enabled:
+        semaphore = asyncio.Semaphore(settings.jev_batch_concurrency)
+
+        # Precompute fan_in from graph
+        fan_in_map = _compute_fan_in(store, repo_path)
+
+        async def triage_one(path: str) -> tuple[str, float, bool]:
+            async with semaphore:
+                meta = file_meta.get(path, {})
+                snippet = ""
+                try:
+                    p = root / path
+                    if p.exists():
+                        snippet = p.read_text(encoding="utf-8", errors="ignore")[:1000]
+                except Exception:
+                    pass
+
+                result = await jev_client.triage_for_summary(
+                    file_path=path,
+                    language=meta.get("language", ""),
+                    loc=meta.get("loc", 0),
+                    complexity=meta.get("complexity", 0),
+                    fan_in=fan_in_map.get(path, 0),
+                    fan_out=0,
+                    symbols=[],
+                    snippet=snippet,
+                )
+                if result:
+                    needs = result.get("needs_summary")
+                    priority = result.get("summary_priority")
+                    should_summarize = needs.probability > 0.5 if needs else True
+                    prio_val = priority.value if priority else 5.0
+                    return (path, prio_val, should_summarize)
+                return (path, 5.0, True)
+
+        triage_results = await asyncio.gather(*(triage_one(p) for p in file_paths))
+        for path, prio, should in triage_results:
+            if should:
+                triaged.append((path, prio))
+            else:
+                triaged_out += 1
+
+        # Sort by priority descending
+        triaged.sort(key=lambda x: -x[1])
+        target_paths = [p for p, _ in triaged[:limit]]
+    else:
+        target_paths = file_paths[:limit]
+
+    # Existing summarization logic
+    semaphore_llm = asyncio.Semaphore(3)
+    result = {
+        "requested": len(target_paths),
+        "created": 0,
+        "skipped": 0,
+        "triaged_out": triaged_out,
+    }
     lock = asyncio.Lock()
 
     async def process(path: str) -> None:
-        async with semaphore:
+        async with semaphore_llm:
+            # ── Bond 9: Check if re-summarization is needed ──
+            if jev_client.enabled:
+                existing = store.get_existing_summary(repo_path, path)
+                if existing and existing.get("text"):
+                    meta = file_meta.get(path, {})
+                    result_jev = await jev_client.should_resummarize(
+                        file_path=path,
+                        language=meta.get("language", ""),
+                        old_loc=meta.get("loc", 0),
+                        new_loc=meta.get("loc", 0),
+                        old_complexity=meta.get("complexity", 0),
+                        new_complexity=meta.get("complexity", 0),
+                        old_content_hash="",
+                        new_content_hash=meta.get("content_hash", ""),
+                        existing_summary=existing["text"],
+                    )
+                    if result_jev:
+                        needs = result_jev.get("needs_resummarize")
+                        if needs and needs.probability is not None and needs.probability < 0.4:
+                            async with lock:
+                                result["skipped"] += 1
+                            return
+
             summary = await _summarize_file(root, path)
             if not summary:
                 async with lock:
@@ -150,6 +349,20 @@ async def generate_summaries_for_repo(
 
     await asyncio.gather(*(process(path) for path in target_paths))
     return result
+
+
+def _compute_fan_in(store: Neo4jStore, repo_path: str) -> dict[str, int]:
+    """Helper to compute fan-in counts from Neo4j."""
+    with store.driver.session() as session:
+        res = session.run(
+            """
+            MATCH (r:Repository {root_path: $repo_path})-[:CONTAINS]->(f:File)
+            OPTIONAL MATCH (dep:File)-[:IMPORTS]->(f)
+            RETURN f.path AS path, count(dep) AS fan_in
+            """,
+            repo_path=repo_path,
+        )
+        return {r["path"]: r["fan_in"] for r in res}
 
 
 def _active_llm_provider() -> str:

@@ -27,6 +27,9 @@ type NodeData = {
   dependents?: number;
   isHighRisk?: boolean;
   isSelected?: boolean;
+  is_test_file?: boolean;
+  framework?: string;
+  is_dead_code?: boolean;
 };
 
 function CartographerNode({ data }: { data: NodeData }) {
@@ -34,7 +37,7 @@ function CartographerNode({ data }: { data: NodeData }) {
   const parentDir = data.label.split("/").slice(0, -1).join("/");
 
   return (
-    <div className={`graph-node ${data.isHighRisk ? "high-risk" : ""} ${data.isSelected ? "selected" : ""}`}>
+    <div className={`graph-node ${data.isHighRisk ? "high-risk" : ""} ${data.isSelected ? "selected" : ""} ${data.is_dead_code ? "dead-code" : ""}`}>
       <Handle type="target" position={Position.Top} style={{ visibility: 'hidden' }} />
       <div className="node-content">
         <div className="node-parent">{parentDir}</div>
@@ -43,6 +46,9 @@ function CartographerNode({ data }: { data: NodeData }) {
           {data.language && <span>{data.language} · </span>}
           {data.loc !== undefined && <span>{data.loc} LOC</span>}
         </div>
+        {data.framework && (
+          <div className="node-framework" style={{ fontSize: '10px', color: '#38bdf8' }}>{data.framework}</div>
+        )}
         {data.dependents !== undefined && data.dependents > 0 && (
           <div className="node-deps">{data.dependents} dependents</div>
         )}
@@ -108,15 +114,15 @@ function GraphPanelContent({
         dependents: node.fan_in,
         isHighRisk: node.score > 75,
         isSelected: selectedFile === node.label,
+        is_test_file: node.is_test_file,
+        framework: node.framework,
+        is_dead_code: node.is_dead_code,
       },
       position: { x: 0, y: 0 },
     }));
 
     if (filters.hideTests) {
-      rawNodes = rawNodes.filter(n => {
-        const path = n.data.label.toLowerCase();
-        return !path.includes('.test.') && !path.includes('.spec.') && !path.includes('/tests/');
-      });
+      rawNodes = rawNodes.filter(n => !n.data.is_test_file);
     }
 
     if (filters.highRiskOnly) {
@@ -215,8 +221,13 @@ function GraphPanelContent({
         <div className="architecture-scope">
           <span className="scope-label">ARCHITECTURE SCOPE</span>
           {graph.clusters.map(c => (
-            <button key={c.name} className="cluster-btn">
+            <button key={c.name} className="cluster-btn" title={c.extraction_readiness ? `Extraction readiness: ${c.extraction_readiness}` : undefined}>
               {c.name} <span className="count">{c.files}</span>
+              {c.cohesion !== undefined && (
+                <div className="cluster-metrics" style={{ fontSize: '10px', opacity: 0.7, marginTop: '4px' }}>
+                  Coh: {c.cohesion} | Cpl: {c.coupling}
+                </div>
+              )}
             </button>
           ))}
         </div>

@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5-coder:7b"
 
+    # TypeSafe Jev decision model
+    jev_api_key: str | None = None
+    jev_base_url: str = "https://thejevai.com"
+    jev_model: str = "jev-latest"
+    jev_enabled: bool = True  # Master kill-switch
+    jev_batch_concurrency: int = 5  # Max parallel Jev calls during scan
+
     embedding_provider: str = "gemini"
     fallback_embedding_provider: str = "ollama"
     gemini_embedding_model: str = "text-embedding-004"

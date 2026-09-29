@@ -22,12 +22,31 @@ export type LoadBearingFile = {
   complexity: number;
   churn_count: number;
   load_bearing_score: number;
+  architectural_role?: string;
+  semantic_risk_score?: number;
+  is_test_file?: boolean;
 };
 
 export type GraphData = {
-  nodes: Array<{ id: string; label: string; score: number; labels: string[]; language?: string; loc?: number; fan_in?: number; fan_out?: number; churn?: number; complexity?: number }>;
+  nodes: Array<{ 
+    id: string; 
+    label: string; 
+    score: number; 
+    labels: string[]; 
+    language?: string; 
+    loc?: number; 
+    fan_in?: number; 
+    fan_out?: number; 
+    churn?: number; 
+    complexity?: number;
+    architectural_role?: string;
+    semantic_risk_score?: number;
+    is_test_file?: boolean;
+    framework?: string;
+    is_dead_code?: boolean;
+  }>;
   edges: Array<{ source: string; target: string; type: string }>;
-  clusters?: Array<{ name: string; files: number; avg_score: number; max_score: number }>;
+  clusters?: Array<{ name: string; files: number; avg_score: number; max_score: number; cohesion?: number; coupling?: number; extraction_readiness?: string }>;
   total_files?: number;
   total_edges?: number;
   truncated?: boolean;
@@ -55,6 +74,16 @@ export type FileDetail = {
   churn_count: number;
   last_modified: string | null;
   load_bearing_score: number;
+  architectural_role?: string;
+  is_test_file?: boolean;
+  test_category?: string;
+  framework?: string;
+  architecture_layer?: string;
+  semantic_risk_score?: number;
+  risk_category?: string;
+  is_dead_code?: boolean;
+  dead_code_category?: string;
+  needs_summary?: boolean;
   symbols: Array<{
     name: string;
     kind: string;
@@ -89,7 +118,7 @@ export async function getRepositories(): Promise<{ repositories: RepositoryInfo[
   return request("/api/repositories");
 }
 
-export async function getFiles(repoPath?: string): Promise<{ files: Array<{ path: string; language: string; loc: number; complexity: number; churn_count: number; load_bearing_score: number }> }> {
+export async function getFiles(repoPath?: string): Promise<{ files: Array<{ path: string; language: string; loc: number; complexity: number; churn_count: number; load_bearing_score: number; architectural_role?: string; semantic_risk_score?: number; is_test_file?: boolean; }> }> {
   return request(withRepoPath("/api/files", repoPath));
 }
 

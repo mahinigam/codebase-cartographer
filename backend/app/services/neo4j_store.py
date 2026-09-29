@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from neo4j import GraphDatabase
 
 from app.core.config import settings
+from app.services.jev_client import jev_client
 from app.models.graph import CachedFile, CodeFile, CodeSymbol, ImportEdge, RepositoryGraph
 
 WRITE_BATCH_SIZE = 250
@@ -46,6 +47,9 @@ class Neo4jStore:
             "CREATE CONSTRAINT symbol_id IF NOT EXISTS FOR (s:Symbol) REQUIRE s.id IS UNIQUE",
             "CREATE CONSTRAINT summary_key IF NOT EXISTS FOR (s:Summary) REQUIRE s.key IS UNIQUE",
             "CREATE INDEX file_score IF NOT EXISTS FOR (f:File) ON (f.load_bearing_score)",
+            "CREATE INDEX file_arch_role IF NOT EXISTS FOR (f:File) ON (f.architectural_role)",
+            "CREATE INDEX file_risk IF NOT EXISTS FOR (f:File) ON (f.semantic_risk_score)",
+            "CREATE INDEX file_framework IF NOT EXISTS FOR (f:File) ON (f.framework)",
             vector_index,
         ]
         with self.driver.session() as session:
@@ -202,7 +206,10 @@ class Neo4jStore:
                 WHERE $repo_path IS NULL OR r.root_path = $repo_path
                 RETURN f.path AS path, f.language AS language, f.loc AS loc,
                        f.complexity AS complexity, f.churn_count AS churn_count,
-                       f.load_bearing_score AS load_bearing_score
+                       f.load_bearing_score AS load_bearing_score,
+                       f.architectural_role AS architectural_role,
+                       f.semantic_risk_score AS semantic_risk_score,
+                       f.is_test_file AS is_test_file
                 ORDER BY f.load_bearing_score DESC
                 LIMIT $limit
                 """,
@@ -211,7 +218,7 @@ class Neo4jStore:
             )
             return [dict(record) for record in result]
 
-    def graph_slice(
+    async def graph_slice(
         self,
         limit: int = GRAPH_DEFAULT_NODE_LIMIT,
         edge_limit: int = GRAPH_DEFAULT_EDGE_LIMIT,
@@ -245,7 +252,12 @@ class Neo4jStore:
                        f.root_path AS repo_path, coalesce(f.language, "") AS language, 
                        coalesce(f.loc, 0) AS loc, fan_in, fan_out, 
                        coalesce(f.churn_count, 0) AS churn, 
-                       coalesce(f.complexity, 0) AS complexity
+                       coalesce(f.complexity, 0) AS complexity,
+                       f.architectural_role AS architectural_role,
+                       f.semantic_risk_score AS semantic_risk_score,
+                       f.is_test_file AS is_test_file,
+                       f.framework AS framework,
+                       f.is_dead_code AS is_dead_code
                 ORDER BY score DESC
                 LIMIT $limit
                 """,
@@ -275,10 +287,37 @@ class Neo4jStore:
                 ids=ids,
                 edge_limit=edge_cap,
             )
+            clusters = self._graph_clusters(session, repo_path)
+            edge_counts = self.cluster_edge_counts(session, repo_path)
+            
+            if jev_client.enabled:
+                for cluster in clusters:
+                    ec = edge_counts.get(cluster["name"], {})
+                    result = await jev_client.assess_cluster(
+                        cluster_name=cluster["name"],
+                        file_count=cluster["files"],
+                        avg_score=cluster["avg_score"],
+                        max_score=cluster["max_score"],
+                        file_paths=[],
+                        internal_edges=ec.get("internal_edges", 0),
+                        external_edges_in=ec.get("external_in", 0),
+                        external_edges_out=ec.get("external_out", 0),
+                    )
+                    if result:
+                        coh = result.get("cohesion")
+                        coup = result.get("coupling")
+                        ext = result.get("extraction_readiness")
+                        if coh:
+                            cluster["cohesion"] = round(coh.value, 2)
+                        if coup:
+                            cluster["coupling"] = round(coup.value, 2)
+                        if ext:
+                            cluster["extraction_readiness"] = ext.answer
+                            
             return {
                 "nodes": node_rows,
                 "edges": [dict(record) for record in edges],
-                "clusters": self._graph_clusters(session, repo_path),
+                "clusters": clusters,
                 "total_files": total_files,
                 "total_edges": total_edges,
                 "truncated": total_files > len(node_rows) or total_edges > edge_cap,
@@ -306,6 +345,33 @@ class Neo4jStore:
         )
         return [dict(record) for record in result]
 
+    def cluster_edge_counts(self, session, repo_path: str | None = None) -> dict:
+        """Get internal/external edge counts per top-level directory cluster."""
+        result = session.run(
+            """
+            MATCH (r:Repository)-[:CONTAINS]->(f:File)
+            WHERE $repo_path IS NULL OR r.root_path = $repo_path
+            WITH f, CASE WHEN f.path CONTAINS '/' THEN split(f.path, '/')[0]
+                         ELSE '(root)' END AS cluster
+            WITH cluster, collect(f.key) AS keys
+            UNWIND keys AS fk
+            MATCH (a:File {key: fk})
+            OPTIONAL MATCH (a)-[:IMPORTS]->(b:File)
+            WITH cluster, keys, fk, b.key AS bk,
+                 CASE WHEN b.key IN keys THEN 1 ELSE 0 END AS is_internal,
+                 CASE WHEN b.key IS NOT NULL AND NOT b.key IN keys THEN 1 ELSE 0 END AS is_external_out
+            WITH cluster,
+                 sum(is_internal) AS internal_edges,
+                 sum(is_external_out) AS external_out
+            OPTIONAL MATCH (ext:File)-[:IMPORTS]->(target:File)
+            WHERE target.key IN keys AND NOT ext.key IN keys
+            WITH cluster, internal_edges, external_out, count(ext) AS external_in
+            RETURN cluster AS name, internal_edges, external_in, external_out
+            """,
+            repo_path=repo_path,
+        )
+        return {r["name"]: dict(r) for r in result}
+
     def scan_cache(self, repo_path: str) -> dict[str, CachedFile]:
         with self.driver.session() as session:
             files = session.run(
@@ -320,7 +386,22 @@ class Neo4jStore:
                        coalesce(f.churn_count, 0) AS churn_count,
                        f.last_modified AS last_modified,
                        coalesce(f.complexity, 0) AS complexity,
-                       coalesce(f.load_bearing_score, 0) AS load_bearing_score
+                       coalesce(f.load_bearing_score, 0) AS load_bearing_score,
+                       f.architectural_role AS architectural_role,
+                       coalesce(f.architectural_role_confidence, 0.0) AS architectural_role_confidence,
+                       coalesce(f.is_test_file, false) AS is_test_file,
+                       coalesce(f.is_test_probability, 0.0) AS is_test_probability,
+                       f.test_category AS test_category,
+                       f.framework AS framework,
+                       coalesce(f.framework_confidence, 0.0) AS framework_confidence,
+                       f.architecture_layer AS architecture_layer,
+                       f.semantic_risk_score AS semantic_risk_score,
+                       f.risk_category AS risk_category,
+                       coalesce(f.is_dead_code, false) AS is_dead_code,
+                       coalesce(f.is_dead_code_probability, 0.0) AS is_dead_code_probability,
+                       f.dead_code_category AS dead_code_category,
+                       coalesce(f.needs_summary, true) AS needs_summary,
+                       coalesce(f.summary_priority, 5.0) AS summary_priority
                 """,
                 repo_path=repo_path,
             )
@@ -405,7 +486,10 @@ class Neo4jStore:
                 RETURN f.path AS path, f.language AS language, coalesce(f.loc, 0) AS loc,
                        coalesce(f.complexity, 0) AS complexity, 
                        coalesce(f.churn_count, 0) AS churn_count,
-                       coalesce(f.load_bearing_score, 0) AS load_bearing_score
+                       coalesce(f.load_bearing_score, 0) AS load_bearing_score,
+                       f.architectural_role AS architectural_role,
+                       f.semantic_risk_score AS semantic_risk_score,
+                       f.is_test_file AS is_test_file
                 ORDER BY f.path
                 """,
                 repo_path=repo_path,
@@ -445,6 +529,20 @@ class Neo4jStore:
                 provider=provider,
                 embedding=embedding,
             )
+
+    def get_existing_summary(self, repo_path: str, file_path: str) -> dict | None:
+        """Get existing summary metadata for re-summarization check."""
+        key = f"{repo_path}:{file_path}"
+        with self.driver.session() as session:
+            result = session.run(
+                """
+                MATCH (s:Summary {key: $key})
+                RETURN s.text AS text, s.file_path AS file_path,
+                       toString(s.updated_at) AS updated_at
+                """,
+                key=key,
+            ).single()
+            return dict(result) if result else None
 
     def semantic_search(
         self, embedding: list[float], limit: int = 6, repo_path: str | None = None
@@ -556,6 +654,16 @@ class Neo4jStore:
                        coalesce(f.churn_count, 0) AS churn_count,
                        f.last_modified AS last_modified,
                        coalesce(f.load_bearing_score, 0) AS load_bearing_score,
+                       f.architectural_role AS architectural_role,
+                       f.is_test_file AS is_test_file,
+                       f.test_category AS test_category,
+                       f.framework AS framework,
+                       f.architecture_layer AS architecture_layer,
+                       f.semantic_risk_score AS semantic_risk_score,
+                       f.risk_category AS risk_category,
+                       f.is_dead_code AS is_dead_code,
+                       f.dead_code_category AS dead_code_category,
+                       f.needs_summary AS needs_summary,
                        symbols, imports, dependents, external_deps, summary,
                        {
                            fan_in: fan_in,
@@ -673,6 +781,21 @@ def _file_props(file: CodeFile, root_path: str) -> dict:
         "last_modified": file.last_modified,
         "complexity": file.complexity,
         "load_bearing_score": file.load_bearing_score,
+        "architectural_role": file.architectural_role,
+        "architectural_role_confidence": file.architectural_role_confidence,
+        "is_test_file": file.is_test_file,
+        "is_test_probability": file.is_test_probability,
+        "test_category": file.test_category,
+        "framework": file.framework,
+        "framework_confidence": file.framework_confidence,
+        "architecture_layer": file.architecture_layer,
+        "semantic_risk_score": file.semantic_risk_score,
+        "risk_category": file.risk_category,
+        "is_dead_code": file.is_dead_code,
+        "is_dead_code_probability": file.is_dead_code_probability,
+        "dead_code_category": file.dead_code_category,
+        "needs_summary": file.needs_summary,
+        "summary_priority": file.summary_priority,
     }
 
 
