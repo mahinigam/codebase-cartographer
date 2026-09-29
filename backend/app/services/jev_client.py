@@ -19,11 +19,11 @@ logger = logging.getLogger(__name__)
 class JevDecision:
     """Parsed result from a single Jev question."""
     def __init__(self, raw: dict):
-        self.answer = raw.get("answer")            # For Choice
-        self.probability = raw.get("probability")  # For Noul
-        self.value = raw.get("value")              # For Score
+        self.answer = raw.get("choice", raw.get("answer"))            # For Choice
+        self.probability = raw.get("noul", raw.get("probability"))  # For Noul
+        self.value = raw.get("score", raw.get("value"))              # For Score
         self.confidence = raw.get("confidence", 0.0)
-        self.distribution = raw.get("distribution", {})  # Full prob per option
+        self.distribution = raw.get("probabilities", raw.get("distribution", {}))  # Full prob per option
 
     def __repr__(self) -> str:
         parts = []
