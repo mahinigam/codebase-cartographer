@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 import httpx
+from typesafe_sdk import AsyncTypeSafeClient, Choice, Noul, Score
 
 from app.core.config import settings
 
@@ -82,34 +83,22 @@ class JevClient:
         if not self.enabled:
             return None
 
-        payload = {
-            "model": self.model,
-            "state": state,
-            "questions": questions,
-        }
+
 
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(
-                    f"{self.base_url}/v1/systemone",
-                    json=payload,
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
-                    },
-                )
-                response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            logger.warning("Jev API HTTP error %s: %s", exc.response.status_code, exc)
-            return None
-        except httpx.HTTPError as exc:
+            ts_client = AsyncTypeSafeClient(api_key=self.api_key, base_url=self.base_url)
+            # Remove any raw types if they were somehow passed as dicts
+            response = await ts_client.system_one(
+                state=state,
+                questions=questions,
+                timeout=timeout
+            )
+        except Exception as exc:
             logger.warning("Jev API request failed: %s", exc)
             return None
 
-        data = response.json()
-        answers = data.get("answers", data.get("decisions", {}))
         decisions = {
-            name: JevDecision(value) for name, value in answers.items()
+            name: JevDecision(ans.model_dump()) for name, ans in response.answers.items()
         }
         return JevResult(decisions)
 
@@ -142,15 +131,14 @@ class JevClient:
             "source_snippet": snippet[:2000],
         }
         questions = {
-            "architectural_role": {
-                "type": "choice",
-                "instructions": (
+            "architectural_role": Choice(
+                instructions= (
                     "Analyze this source file's structural metadata and source snippet. "
                     "What is the primary architectural role this file plays in the codebase? "
                     "Consider the file path, the symbols it defines, its import/export patterns, "
                     "its complexity, and its position in the dependency graph (fan-in/fan-out)."
                 ),
-                "criteria": {
+                criteria={
                     "core-business-logic": "core-business-logic",
                     "api-endpoint-handler": "api-endpoint-handler",
                     "api-route-definition": "api-route-definition",
@@ -200,7 +188,7 @@ class JevClient:
                     "internationalization-i18n": "internationalization-i18n",
                     "feature-flag-gate": "feature-flag-gate",
                 },
-            },
+            ),
         }
         return await self.decide(state, questions)
 
@@ -237,9 +225,8 @@ class JevClient:
             "current_deterministic_risk_score": deterministic_score,
         }
         questions = {
-            "semantic_risk": {
-                "type": "score",
-                "instructions": (
+            "semantic_risk": Score(
+                instructions= (
                     "Evaluate how risky it would be to modify, refactor, or delete this file. "
                     "Consider: (1) Is this file a critical chokepoint in the dependency graph? "
                     "(2) Does it implement security, authentication, or data-integrity logic? "
@@ -249,14 +236,13 @@ class JevClient:
                     "(6) Does the churn suggest instability or active development that compounds risk? "
                     "A score of 1 means trivially safe to touch; 10 means extremely dangerous."
                 ),
-                "criteria": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
-            },
-            "risk_category": {
-                "type": "choice",
-                "instructions": (
+                criteria=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+            ),
+            "risk_category": Choice(
+                instructions= (
                     "What is the primary source of risk for this file?"
                 ),
-                "criteria": {
+                criteria={
                     "structural-chokepoint": "structural-chokepoint",
                     "security-critical": "security-critical",
                     "data-integrity": "data-integrity",
@@ -267,7 +253,7 @@ class JevClient:
                     "implicit-coupling": "implicit-coupling",
                     "minimal-risk": "minimal-risk",
                 },
-            },
+            ),
         }
         return await self.decide(state, questions)
 
@@ -290,9 +276,8 @@ class JevClient:
             "source_snippet": snippet[:1500],
         }
         questions = {
-            "is_test": {
-                "type": "noul",
-                "instructions": (
+            "is_test": Noul(
+                instructions= (
                     "Is this file a test file, spec file, test fixture, test factory, "
                     "test helper, test configuration (e.g., conftest.py, jest.config.js, "
                     "setup.ts), mock/stub module, or any other file whose primary purpose is "
@@ -302,13 +287,12 @@ class JevClient:
                     "testing-library, supertest, etc.), and whether the function/class names "
                     "follow testing conventions (test_, it(), describe(), expect(), assert)."
                 ),
-            },
-            "test_category": {
-                "type": "choice",
-                "instructions": (
+            ),
+            "test_category": Choice(
+                instructions= (
                     "If this is a test-related file, what specific category does it fall into?"
                 ),
-                "criteria": {
+                criteria={
                     "unit-test": "unit-test",
                     "integration-test": "integration-test",
                     "end-to-end-test": "end-to-end-test",
@@ -320,7 +304,7 @@ class JevClient:
                     "mock-stub-module": "mock-stub-module",
                     "not-a-test-file": "not-a-test-file",
                 },
-            },
+            ),
         }
         return await self.decide(state, questions)
 
@@ -335,9 +319,8 @@ class JevClient:
             "repo_has_ai_summaries": repo_has_summaries,
         }
         questions = {
-            "intent": {
-                "type": "choice",
-                "instructions": (
+            "intent": Choice(
+                instructions= (
                     "A developer is querying an architecture analysis tool about their codebase. "
                     "Classify the intent of their question to determine the optimal processing "
                     "strategy. The system supports: direct file navigation (just look up a file), "
@@ -349,7 +332,7 @@ class JevClient:
                     "and general AI-assisted questions (anything requiring deeper reasoning). "
                     "Choose the most specific intent that matches."
                 ),
-                "criteria": {
+                criteria={
                     "navigate-to-file": "navigate-to-file",
                     "symbol-lookup": "symbol-lookup",
                     "risk-assessment": "risk-assessment",
@@ -364,15 +347,14 @@ class JevClient:
                     "comparison-between-files": "comparison-between-files",
                     "general-ai-question": "general-ai-question",
                 },
-            },
-            "needs_ai_generation": {
-                "type": "noul",
-                "instructions": (
+            ),
+            "needs_ai_generation": Noul(
+                instructions= (
                     "Does this question require a generative AI (LLM) to produce a natural-language "
                     "explanation, or can it be fully answered with structured graph data alone "
                     "(file lists, dependency trees, risk scores, symbol tables)?"
                 ),
-            },
+            ),
         }
         return await self.decide(state, questions)
 
@@ -399,9 +381,8 @@ class JevClient:
             "external_outgoing_edges": external_edges_out,
         }
         questions = {
-            "cohesion": {
-                "type": "score",
-                "instructions": (
+            "cohesion": Score(
+                instructions= (
                     "Rate the cohesion of this module/directory cluster. "
                     "High cohesion means files within the cluster are strongly related to each other "
                     "and share a single well-defined responsibility. Low cohesion means the cluster "
@@ -409,24 +390,22 @@ class JevClient:
                     "internal-to-external edges, and the cluster name. "
                     "1 = completely incoherent, 5 = perfectly cohesive."
                 ),
-                "criteria": ["1", "2", "3", "4", "5"],
-            },
-            "coupling": {
-                "type": "score",
-                "instructions": (
+                criteria=["1", "2", "3", "4", "5"],
+            ),
+            "coupling": Score(
+                instructions= (
                     "Rate how tightly coupled this module is to the rest of the codebase. "
                     "High coupling means many external edges crossing the cluster boundary. "
                     "Low coupling means the cluster is well-encapsulated with a narrow interface. "
                     "1 = completely decoupled, 5 = deeply entangled."
                 ),
-                "criteria": ["1", "2", "3", "4", "5"],
-            },
-            "extraction_readiness": {
-                "type": "choice",
-                "instructions": (
+                criteria=["1", "2", "3", "4", "5"],
+            ),
+            "extraction_readiness": Choice(
+                instructions= (
                     "Could this module be safely extracted into a standalone package or microservice?"
                 ),
-                "criteria": {
+                criteria={
                     "ready-to-extract": "ready-to-extract",
                     "extractable-with-minor-refactoring": "extractable-with-minor-refactoring",
                     "extractable-with-significant-refactoring": "extractable-with-significant-refactoring",
@@ -434,7 +413,7 @@ class JevClient:
                     "too-small-to-warrant-extraction": "too-small-to-warrant-extraction",
                     "already-well-bounded": "already-well-bounded",
                 },
-            },
+            ),
         }
         return await self.decide(state, questions)
 
@@ -462,9 +441,8 @@ class JevClient:
             ),
         }
         questions = {
-            "safe_to_refactor": {
-                "type": "noul",
-                "instructions": (
+            "safe_to_refactor": Noul(
+                instructions= (
                     "Given the number of direct and transitive dependents, the risk score, "
                     "the complexity, and the dependency depth — is it safe to refactor this file "
                     "in a single pull request without a staged rollout, feature flag, or "
@@ -472,13 +450,12 @@ class JevClient:
                     "almost always safe, while a file with 10+ transitive dependents at depth 3+ "
                     "is risky. Also factor in whether the file is likely a shared contract."
                 ),
-            },
-            "recommended_strategy": {
-                "type": "choice",
-                "instructions": (
+            ),
+            "recommended_strategy": Choice(
+                instructions= (
                     "What refactoring strategy should the developer use for this file?"
                 ),
-                "criteria": {
+                criteria={
                     "safe-direct-refactor": "safe-direct-refactor",
                     "refactor-with-deprecation-period": "refactor-with-deprecation-period",
                     "refactor-behind-feature-flag": "refactor-behind-feature-flag",
@@ -488,16 +465,15 @@ class JevClient:
                     "requires-team-coordination": "requires-team-coordination",
                     "do-not-refactor-too-risky": "do-not-refactor-too-risky",
                 },
-            },
-            "estimated_blast_radius": {
-                "type": "score",
-                "instructions": (
+            ),
+            "estimated_blast_radius": Score(
+                instructions= (
                     "On a scale of 1 to 10, how large is the blast radius if this refactor "
                     "introduces a bug? 1 = affects only this file, 10 = cascading failures "
                     "across the entire application."
                 ),
-                "criteria": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
-            },
+                criteria=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+            ),
         }
         return await self.decide(state, questions)
 
@@ -524,9 +500,8 @@ class JevClient:
             "source_snippet": snippet[:1000],
         }
         questions = {
-            "needs_summary": {
-                "type": "noul",
-                "instructions": (
+            "needs_summary": Noul(
+                instructions= (
                     "Does this file contain enough meaningful logic, architecture, or domain "
                     "knowledge to warrant spending an LLM API call to generate an AI summary? "
                     "Files that do NOT need a summary include: empty or near-empty files, "
@@ -539,17 +514,16 @@ class JevClient:
                     "database queries, API handlers, middleware, state management, or anything "
                     "that a new developer would benefit from understanding."
                 ),
-            },
-            "summary_priority": {
-                "type": "score",
-                "instructions": (
+            ),
+            "summary_priority": Score(
+                instructions= (
                     "If this file were to be summarized, how high priority is it relative to "
                     "other files in the codebase? A high-fan-in, high-complexity service file "
                     "should be summarized before a low-complexity utility. "
                     "1 = lowest priority, 10 = should be summarized first."
                 ),
-                "criteria": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
-            },
+                criteria=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+            ),
         }
         return await self.decide(state, questions)
 
@@ -572,14 +546,13 @@ class JevClient:
             "source_snippet": snippet[:1500],
         }
         questions = {
-            "framework": {
-                "type": "choice",
-                "instructions": (
+            "framework": Choice(
+                instructions= (
                     "What framework or library ecosystem does this file primarily belong to? "
                     "Analyze the imports, external dependencies, file path conventions, "
                     "and source patterns to determine the dominant framework."
                 ),
-                "criteria": {
+                criteria={
                     "react": "react",
                     "react-native": "react-native",
                     "nextjs": "nextjs",
@@ -628,13 +601,12 @@ class JevClient:
                     "framework-agnostic": "framework-agnostic",
                     "unknown": "unknown",
                 },
-            },
-            "layer": {
-                "type": "choice",
-                "instructions": (
+            ),
+            "layer": Choice(
+                instructions= (
                     "In a standard layered architecture, which layer does this file belong to?"
                 ),
-                "criteria": {
+                criteria={
                     "presentation-ui": "presentation-ui",
                     "api-transport": "api-transport",
                     "application-service": "application-service",
@@ -648,7 +620,7 @@ class JevClient:
                     "configuration": "configuration",
                     "unknown": "unknown",
                 },
-            },
+            ),
         }
         return await self.decide(state, questions)
 
@@ -681,9 +653,8 @@ class JevClient:
             "existing_summary_preview": existing_summary[:500],
         }
         questions = {
-            "needs_resummarize": {
-                "type": "noul",
-                "instructions": (
+            "needs_resummarize": Noul(
+                instructions= (
                     "A file in the codebase has been modified since its last AI summary was "
                     "generated. Based on the magnitude of changes (LOC delta, complexity delta), "
                     "is the existing summary likely to be materially invalidated? "
@@ -695,15 +666,14 @@ class JevClient:
                     "new dependencies added, significant logic changes (complexity delta > 3), "
                     "LOC change > 20%, and structural refactors."
                 ),
-            },
-            "change_significance": {
-                "type": "score",
-                "instructions": (
+            ),
+            "change_significance": Score(
+                instructions= (
                     "How significant is this change to the file's architectural role? "
                     "1 = cosmetic/trivial, 10 = fundamental structural change."
                 ),
-                "criteria": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
-            },
+                criteria=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+            ),
         }
         return await self.decide(state, questions)
 
@@ -734,9 +704,8 @@ class JevClient:
             "source_snippet": snippet[:1000],
         }
         questions = {
-            "is_dead_code": {
-                "type": "noul",
-                "instructions": (
+            "is_dead_code": Noul(
+                instructions= (
                     "Is this file likely dead code — meaning it is no longer used by any "
                     "other file in the codebase, is not an entrypoint, is not a CLI script, "
                     "is not dynamically loaded, and serves no active purpose? "
@@ -748,13 +717,12 @@ class JevClient:
                     "Also consider whether the file path suggests it was deprecated or replaced "
                     "(e.g., old_, deprecated_, backup_, .bak)."
                 ),
-            },
-            "dead_code_category": {
-                "type": "choice",
-                "instructions": (
+            ),
+            "dead_code_category": Choice(
+                instructions= (
                     "If the file appears to be dead code, what category does it fall into?"
                 ),
-                "criteria": {
+                criteria={
                     "abandoned-feature": "abandoned-feature",
                     "replaced-by-newer-implementation": "replaced-by-newer-implementation",
                     "leftover-from-refactor": "leftover-from-refactor",
@@ -766,7 +734,7 @@ class JevClient:
                     "backup-copy": "backup-copy",
                     "not-dead-code": "not-dead-code",
                 },
-            },
+            ),
         }
         return await self.decide(state, questions)
 
