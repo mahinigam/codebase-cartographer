@@ -44,7 +44,7 @@ Core relationships:
 
 The initial load-bearing score combines:
 
-- fan-in: how many files depend on a file
+- fan-in: how many files depend on a file (dampened for trivial utility files to prevent simple re-exports from outranking complex modules)
 - complexity: branch-heavy code is harder to change safely
 - churn: files changed frequently in Git history carry more uncertainty
 - fan-out: files that know many dependencies can spread coupling
@@ -53,7 +53,7 @@ The score is explainable and intentionally deterministic. AI may describe the ri
 
 ## AI Strategy
 
-Gemini is the primary reasoning layer for its strong code understanding and free-tier availability. Ollama is a local fallback for offline use and private codebases.
+Gemini is the primary reasoning layer for its strong code understanding and free-tier availability. The system implements a robust fallback cascade: if the primary provider fails or rate-limits, it gracefully falls back to Ollama for offline use/private codebases. If both LLM services are unavailable, Cartographer provides a deterministic offline fallback using structural Neo4j retrieval.
 
 When summaries are enabled, Cartographer sends truncated source snippets (default: 4,000 characters per file, up to 120 files) to the active LLM provider. Disable summaries or use Ollama-only for confidential repositories.
 
@@ -63,7 +63,7 @@ No API key is stored in source control.
 
 Repository graphs are written to Neo4j in batched `UNWIND` statements. File nodes include size, mtime, and SHA-256 content fingerprints. On incremental rescans, unchanged files reuse their previous symbols and import edges from Neo4j; changed files are reparsed and the repository-level score is recomputed across the full graph. Removed files are deleted during upsert.
 
-The architecture graph view returns the highest load-bearing files first, with a hard cap (400 nodes / 2,000 edges) so the UI stays usable on large repositories. Truncation is reported to the client, along with top-level directory clusters that provide level-of-detail context for the hidden remainder.
+The architecture graph view returns the highest load-bearing files first, with a hard cap (400 nodes / 2,000 edges) so the UI stays usable on large repositories. Truncation is reported to the client, along with top-level directory clusters that provide level-of-detail context for the hidden remainder. Furthermore, the frontend implements interactive graph filters (e.g., hiding test files, displaying only high-risk components, removing isolated nodes) directly over this truncated layout to help users distill complex architecture maps efficiently.
 
 ## API Guardrails
 

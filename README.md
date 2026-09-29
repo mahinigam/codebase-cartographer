@@ -19,6 +19,7 @@ Large codebases are notoriously difficult to change safely because their real ar
 ### The Cartographer Environment
 - **Pro-Grade Resizable Layout**: Modeled after industry-standard engineering tools (like Cursor and Linear), featuring a dedicated dark-slate workspace with fully resizable left (Repository Explorer), center (Graph Canvas), and right (Inspector) panels.
 - **Interactive Infinite Canvas**: Powered by ReactFlow, the center stage provides a full-bleed, hardware-accelerated interactive architecture map. Seamlessly pan and zoom through your codebase with trackpad gestures.
+- **Interactive Graph Filters**: Clean up massive dependency webs instantly by toggling filters for test files, high-risk components only (>75 score), and isolated nodes.
 - **Global Command Palette**: Instantly jump to files, search for symbols, or ask architectural questions from anywhere using the `Cmd+K` command palette.
 - **Real-time Glassmorphic Overlays**: Locate high-risk clusters across massive repositories using the real-time radar MiniMap and floating toolbars.
 
@@ -72,7 +73,7 @@ npm install
 npm run dev
 ```
 
-Open your browser to `http://localhost:3000`.
+Open your browser to `http://localhost:5173`.
 
 ## Docker Compose
 
@@ -96,6 +97,6 @@ docker compose up --build
 ## Security & Privacy
 
 - **Local First**: The application indexes local source files and does not upload raw code unless an external LLM provider is explicitly enabled.
-- **Provider Fallbacks**: When AI summaries are enabled, up to 4,000 characters of each file's source are sent to the Gemini API. To ensure absolute privacy for proprietary code, disable Gemini and rely entirely on the local Ollama fallback.
+- **Provider Fallbacks**: The system utilizes an intelligent fallback cascade for AI capabilities. When AI summaries are enabled, up to 4,000 characters of each file's source are sent to the primary provider (Gemini). If Gemini is unavailable, it automatically falls back to Ollama; if both fail, the engine provides a deterministic structural fallback relying solely on Neo4j topology. To ensure absolute privacy for proprietary code, you can disable Gemini and rely entirely on the local Ollama fallback.
 - **Path Constraints**: Summary generation automatically refuses paths that resolve outside the scanned repository root.
 - **API Security**: `SCAN_MAX_FILES` and `SCAN_RATE_LIMIT_PER_MINUTE` cap expensive scan/summarization requests to prevent abuse in shared environments.
