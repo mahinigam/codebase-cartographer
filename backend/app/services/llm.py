@@ -2,8 +2,9 @@ import asyncio
 import logging
 
 import httpx
-import google.generativeai as genai
-from google.api_core.exceptions import ResourceExhausted
+from google import genai
+from google.genai import errors
+from google.genai.types import TaskType
 
 from app.core.config import settings
 
@@ -12,22 +13,26 @@ logger = logging.getLogger(__name__)
 
 class LLMClient:
     def __init__(self):
+        self.gemini_client = None
         if settings.gemini_api_key:
-            genai.configure(api_key=settings.gemini_api_key)
+            self.gemini_client = genai.Client(api_key=settings.gemini_api_key)
 
     async def complete(self, prompt: str) -> str:
         providers = [settings.llm_provider, settings.fallback_llm_provider]
         for provider in providers:
-            if provider == "gemini" and settings.gemini_api_key:
+            if provider == "gemini" and self.gemini_client:
                 for _ in range(5):
                     try:
                         return await self._gemini(prompt)
-                    except ResourceExhausted:
-                        await asyncio.sleep(5)
-                        continue
+                    except errors.APIError as exc:
+                        if "429" in str(exc):
+                            await asyncio.sleep(5)
+                            continue
+                        logger.warning(f"Gemini completion failed: {exc}")
+                        break
                     except Exception as exc:
                         logger.warning(f"Gemini completion failed: {exc}")
-                    break
+                        break
             elif provider == "ollama":
                 try:
                     return await self._ollama(prompt)
@@ -38,16 +43,19 @@ class LLMClient:
     async def embed(self, text: str, task: str = "RETRIEVAL_DOCUMENT") -> list[float]:
         providers = [settings.embedding_provider, settings.fallback_embedding_provider]
         for provider in providers:
-            if provider == "gemini" and settings.gemini_api_key:
+            if provider == "gemini" and self.gemini_client:
                 for _ in range(5):
                     try:
                         return await self._gemini_embed(text, task)
-                    except ResourceExhausted:
-                        await asyncio.sleep(5)
-                        continue
+                    except errors.APIError as exc:
+                        if "429" in str(exc):
+                            await asyncio.sleep(5)
+                            continue
+                        logger.warning(f"Gemini embedding failed: {exc}")
+                        break
                     except Exception as exc:
                         logger.warning(f"Gemini embedding failed: {exc}")
-                    break
+                        break
             elif provider == "ollama":
                 try:
                     return await self._ollama_embed(text)
@@ -56,21 +64,27 @@ class LLMClient:
         return []
 
     async def _gemini(self, prompt: str) -> str:
-        model = genai.GenerativeModel(settings.gemini_model)
-        response = await model.generate_content_async(prompt)
+        response = await self.gemini_client.aio.models.generate_content(
+            model=settings.gemini_model,
+            contents=prompt,
+        )
         return response.text
 
     async def _gemini_embed(self, text: str, task: str) -> list[float]:
-        model_name = settings.gemini_embedding_model
-        if not model_name.startswith("models/"):
-            model_name = f"models/{model_name}"
+        # Maps the string "RETRIEVAL_DOCUMENT" to TaskType.RETRIEVAL_DOCUMENT etc.
+        try:
+            task_type = getattr(TaskType, task)
+        except AttributeError:
+            task_type = TaskType.RETRIEVAL_DOCUMENT
             
-        response = await genai.embed_content_async(
+        model_name = settings.gemini_embedding_model
+        
+        response = await self.gemini_client.aio.models.embed_content(
             model=model_name,
-            content=text,
-            task_type=task
+            contents=text,
+            config={"task_type": task_type}
         )
-        return response['embedding']
+        return response.embeddings[0].values
 
     async def _ollama(self, prompt: str) -> str:
         payload = {"model": settings.ollama_model, "prompt": prompt, "stream": False}
