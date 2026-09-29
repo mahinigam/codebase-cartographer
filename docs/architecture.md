@@ -58,7 +58,7 @@ After deterministic scoring, high-load-bearing files are passed to our TypeSafe 
 Cartographer employs a dual-tier AI architecture to balance speed, structured outputs, and deep reasoning:
 
 1. **System One (TypeSafe AI Jev):**
-   Integrated via the official `typesafe-sdk`, Jev acts as the fast, structured decision engine. It is utilized heavily during the indexing phase (the "10 Integration Bonds") for probabilistic test-file detection, framework detection, dead-code identification, and semantic risk scoring.
+   Integrated via the official `typesafe-sdk`, Jev acts as the fast, structured decision engine. It is utilized across the entire lifecycle through 10 distinct "Integration Bonds." During indexing, it detects test files, dead code, and frameworks, while also computing semantic risk. During retrieval and summarization, it acts as a smart gateway: routing user queries, evaluating refactor safety, and triaging which files actually need expensive Gemini summaries.
    
 2. **System Two (Google Gemini / Ollama):**
    Gemini serves as the primary deep-reasoning layer. When summaries are enabled, Cartographer sends truncated source snippets (default: 4,000 characters per file) to Gemini to generate natural-language architectural summaries and compute high-dimensional embeddings (`text-embedding-004`). 
