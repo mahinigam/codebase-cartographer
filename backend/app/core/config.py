@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # TypeSafe Jev decision model
     jev_api_key: str | None = None
-    jev_base_url: str = "https://thejevai.com"
+    jev_base_url: str = "https://api.typesafe.ai"
     jev_model: str = "jev-latest"
     jev_enabled: bool = True  # Master kill-switch
     jev_batch_concurrency: int = 5  # Max parallel Jev calls during scan
