@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen2.5-coder:7b"
 
     # TypeSafe Jev decision model
-    jev_api_key: str | None = None
+    typesafe_api_key: str | None = None
     jev_base_url: str = "https://api.typesafe.ai"
     jev_model: str = "jev-latest"
     jev_enabled: bool = True  # Master kill-switch

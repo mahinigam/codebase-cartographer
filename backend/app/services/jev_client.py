@@ -57,7 +57,7 @@ class JevClient:
     """HTTP client for the TypeSafe Jev System One API."""
 
     def __init__(self):
-        self.api_key = settings.jev_api_key
+        self.api_key = settings.typesafe_api_key
         self.base_url = settings.jev_base_url
         self.model = settings.jev_model
         self.enabled = bool(self.api_key)
