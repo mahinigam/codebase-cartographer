@@ -1,19 +1,20 @@
 # Architecture
 
-Codebase Cartographer is built around structural forensics: deterministic code structure first, AI synthesis second.
+Codebase Cartographer is built around structural forensics: deterministic code structure combined with two distinct layers of AI analysis.
 
 ```mermaid
 flowchart TD
     A["Local repository"] --> B["Scanner"]
-B --> C["Python AST parser"]
-B --> D["Tree-sitter JS/TS parser"]
-B --> E["Git history miner"]
-B --> N["Incremental scan cache"]
-C --> F["Risk scorer"]
-D --> F
-E --> F
-N --> F
-    F --> G["Neo4j knowledge graph"]
+    B --> C["Python AST parser"]
+    B --> D["Tree-sitter JS/TS parser"]
+    B --> E["Git history miner"]
+    B --> N["Incremental scan cache"]
+    C --> F["Risk scorer"]
+    D --> F
+    E --> F
+    N --> F
+    F --> O["TypeSafe Jev (System One AI)"]
+    O --> G["Neo4j knowledge graph"]
     G --> H["File summaries + embeddings"]
     G --> I["Forensics dashboard"]
     G --> J["Impact analysis"]
@@ -42,22 +43,28 @@ Core relationships:
 
 ## Risk Model
 
-The initial load-bearing score combines:
+The initial load-bearing score combines deterministic metrics:
 
 - fan-in: how many files depend on a file (dampened for trivial utility files to prevent simple re-exports from outranking complex modules)
 - complexity: branch-heavy code is harder to change safely
 - churn: files changed frequently in Git history carry more uncertainty
 - fan-out: files that know many dependencies can spread coupling
 
-The score is explainable and intentionally deterministic. AI may describe the risk, but it does not invent the score.
+**Semantic Enhancement (TypeSafe Jev):**
+After deterministic scoring, high-load-bearing files are passed to our TypeSafe Jev System One integration. Jev evaluates the structural role, domain logic, and likelihood of the file acting as a critical chokepoint or security vulnerability. The final risk score is a blended composite: 70% deterministic metrics and 30% Jev semantic risk.
 
-## AI Strategy
+## Two-Tier AI Strategy
 
-Gemini is the primary reasoning layer for its strong code understanding and free-tier availability. The system implements a robust fallback cascade: if the primary provider fails or rate-limits, it gracefully falls back to Ollama for offline use/private codebases. If both LLM services are unavailable, Cartographer provides a deterministic offline fallback using structural Neo4j retrieval.
+Cartographer employs a dual-tier AI architecture to balance speed, structured outputs, and deep reasoning:
 
-When summaries are enabled, Cartographer sends truncated source snippets (default: 4,000 characters per file, up to 120 files) to the active LLM provider. Disable summaries or use Ollama-only for confidential repositories.
+1. **System One (TypeSafe AI Jev):**
+   Integrated via the official `typesafe-sdk`, Jev acts as the fast, structured decision engine. It is utilized heavily during the indexing phase (the "10 Integration Bonds") for probabilistic test-file detection, framework detection, dead-code identification, and semantic risk scoring.
+   
+2. **System Two (Google Gemini / Ollama):**
+   Gemini serves as the primary deep-reasoning layer. When summaries are enabled, Cartographer sends truncated source snippets (default: 4,000 characters per file) to Gemini to generate natural-language architectural summaries and compute high-dimensional embeddings (`text-embedding-004`). 
 
-No API key is stored in source control.
+**Fallback Cascade:**
+If the primary provider (Gemini) fails or rate-limits, the system gracefully falls back to a local Ollama instance (`qwen2.5-coder:7b`) for offline use and private codebases. If both LLM services are unavailable, Cartographer provides a deterministic offline fallback using structural Neo4j retrieval. No API key is stored in source control.
 
 ## Persistence
 

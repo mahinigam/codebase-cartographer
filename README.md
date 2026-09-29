@@ -30,6 +30,7 @@ Large codebases are notoriously difficult to change safely because their real ar
 - **Git History Mining**: Extracts churn counts and recency metrics directly from the local `.git` directory.
 
 ### AI & Semantic Analysis
+- **Two-Tier AI Engine**: Employs a dual-layer AI strategy. **System One** (TypeSafe AI Jev) makes sub-second, structured classifications on every file (e.g., detecting test files, routing queries, calculating semantic risk). **System Two** (Gemini/Ollama) performs deep, generative reasoning for long-form file summaries.
 - **Ask Cartographer**: Ask high-level architecture questions and receive answers grounded entirely in graph topology and vector evidence.
 - **Impact Analysis**: Visually trace the direct and transitive dependents of any file to assess refactor risk before you write a line of code.
 - **Semantic Search**: Gemini embeddings (stored in a Neo4j vector index) enable meaning-based, rather than keyword-based, file retrieval.
@@ -42,8 +43,9 @@ Large codebases are notoriously difficult to change safely because their real ar
 | **Backend** | FastAPI (Python 3.12+) managed via `uv` |
 | **Graph Database** | Neo4j Community Edition |
 | **Static Analysis** | Python AST, Tree-sitter (JS/TS) |
-| **AI (Primary)** | Google Gemini API |
-| **AI (Fallback)** | Ollama `qwen2.5-coder:7b` |
+| **System One AI** | TypeSafe AI (Jev) via `typesafe-sdk` |
+| **System Two AI (Primary)** | Google Gemini API |
+| **System Two AI (Fallback)** | Ollama `qwen2.5-coder:7b` |
 | **Embeddings** | Gemini `text-embedding-004` / Ollama `nomic-embed-text` |
 | **Graph Visualization** | ReactFlow + Dagre |
 
@@ -53,7 +55,7 @@ Large codebases are notoriously difficult to change safely because their real ar
 ```bash
 cp .env.example .env
 ```
-Add your Gemini API key and Neo4j credentials to `.env`.
+Add your `TYPESAFE_API_KEY`, Gemini API key, and Neo4j credentials to `.env`.
 
 2. **Start Neo4j Database:**
 ```bash
@@ -97,6 +99,6 @@ docker compose up --build
 ## Security & Privacy
 
 - **Local First**: The application indexes local source files and does not upload raw code unless an external LLM provider is explicitly enabled.
-- **Provider Fallbacks**: The system utilizes an intelligent fallback cascade for AI capabilities. When AI summaries are enabled, up to 4,000 characters of each file's source are sent to the primary provider (Gemini). If Gemini is unavailable, it automatically falls back to Ollama; if both fail, the engine provides a deterministic structural fallback relying solely on Neo4j topology. To ensure absolute privacy for proprietary code, you can disable Gemini and rely entirely on the local Ollama fallback.
+- **Provider Fallbacks**: The system utilizes an intelligent dual-tier AI cascade. System One (TypeSafe Jev) relies on lightweight, structured queries for indexing. For deep summaries (System Two), up to 4,000 characters of source code are sent to the primary provider (Gemini). If Gemini is unavailable, it automatically falls back to Ollama; if both fail, the engine provides a deterministic structural fallback relying solely on Neo4j topology. To ensure absolute privacy for proprietary code, you can disable Gemini and rely entirely on the local Ollama fallback.
 - **Path Constraints**: Summary generation automatically refuses paths that resolve outside the scanned repository root.
 - **API Security**: `SCAN_MAX_FILES` and `SCAN_RATE_LIMIT_PER_MINUTE` cap expensive scan/summarization requests to prevent abuse in shared environments.
