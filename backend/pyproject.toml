@@ -19,6 +19,7 @@ dependencies = [
   "tree-sitter>=0.22.0,<0.27.0",
   "tree-sitter-language-pack>=1.1.0",
   "typesafe-sdk>=0.7.2",
+  "google-generativeai>=0.8.6",
 ]
 
 [project.optional-dependencies]
