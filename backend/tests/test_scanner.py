@@ -13,6 +13,49 @@ from app.indexing.scanner import (
 )
 
 
+
+@pytest.fixture(autouse=True)
+def mock_jev_responses(monkeypatch):
+    from app.services.jev_client import jev_client, JevResult, JevDecision
+
+    async def dummy_classify(*args, **kwargs):
+        return JevResult({
+            "architectural_role": JevDecision({"choice": "core", "confidence": 0.9})
+        })
+
+    async def dummy_risk(*args, **kwargs):
+        return JevResult({
+            "semantic_risk": JevDecision({"score": 5}),
+            "risk_category": JevDecision({"choice": "medium"})
+        })
+
+    async def dummy_test_file(*args, **kwargs):
+        return JevResult({
+            "is_test": JevDecision({"noul": 0.9}),
+            "test_category": JevDecision({"choice": "unit-test"})
+        })
+
+    async def dummy_framework(*args, **kwargs):
+        return JevResult({
+            "framework": JevDecision({"choice": "react"}),
+            "layer": JevDecision({"choice": "ui"})
+        })
+
+    async def dummy_dead_code(*args, **kwargs):
+        return JevResult({
+            "is_dead_code": JevDecision({"noul": 0.9}),
+            "dead_code_category": JevDecision({"choice": "old"})
+        })
+
+    monkeypatch.setattr(jev_client, "classify_file", dummy_classify)
+    monkeypatch.setattr(jev_client, "score_semantic_risk", dummy_risk)
+    monkeypatch.setattr(jev_client, "detect_test_file", dummy_test_file)
+    monkeypatch.setattr(jev_client, "detect_framework", dummy_framework)
+    monkeypatch.setattr(jev_client, "detect_dead_code", dummy_dead_code)
+    monkeypatch.setattr(jev_client, "detect_framework", dummy_framework)
+    monkeypatch.setattr(jev_client, "detect_dead_code", dummy_dead_code)
+
+
 def test_validate_repo_path_rejects_missing_path() -> None:
     with pytest.raises(UnsafeRepositoryPath):
         validate_repo_path("/definitely/not/a/real/repo")
