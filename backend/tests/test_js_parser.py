@@ -1,7 +1,7 @@
-from app.indexing import js_parser
-from unittest.mock import MagicMock
 from pathlib import Path
+from unittest.mock import MagicMock
 
+from app.indexing import js_parser
 from app.indexing.js_parser import _configure_parser_language, parse_js_like
 
 

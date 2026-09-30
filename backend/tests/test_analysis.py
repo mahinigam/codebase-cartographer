@@ -1,13 +1,20 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
-from app.services.jev_client import JevResult, JevDecision
+
+from app.services.jev_client import JevDecision, JevResult
+
 
 @pytest.fixture
 def mock_store():
     return MagicMock()
 
 from app.services import analysis
-from app.services.analysis import explain_impact, generate_summaries_for_repo, answer_architecture_question
+from app.services.analysis import (
+    answer_architecture_question,
+    explain_impact,
+    generate_summaries_for_repo,
+)
 from app.services.neo4j_store import _search_words
 
 
@@ -86,7 +93,7 @@ async def test_generate_summaries_skips_gemini_if_jev_triage_fails(monkeypatch) 
     class FakeJev:
         enabled = True
         async def triage_for_summary(self, *args, **kwargs):
-            from app.services.jev_client import JevResult, JevDecision
+            from app.services.jev_client import JevDecision, JevResult
             return JevResult({
                 "needs_summary": JevDecision({"noul": 0.1}),  # < 0.5 means skip
                 "summary_priority": JevDecision({"score": 1})
@@ -266,9 +273,9 @@ async def test_generate_impact_narrative(monkeypatch):
 
 
 def test_asks_about_risk():
-    assert analysis._asks_about_risk("risk") == True
-    assert analysis._asks_about_risk("load bearing") == True
-    assert analysis._asks_about_risk("hello") == False
+    assert analysis._asks_about_risk("risk")
+    assert analysis._asks_about_risk("load bearing")
+    assert not analysis._asks_about_risk("hello")
 
 
 def test_load_bearing_matches(mock_store):

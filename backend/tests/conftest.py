@@ -1,6 +1,6 @@
+
 import pytest
-import socket
-from unittest.mock import MagicMock
+
 
 # Block all HTTPX requests by injecting the httpx_mock fixture globally.
 # pytest-httpx will automatically intercept and fail any request not explicitly mocked.

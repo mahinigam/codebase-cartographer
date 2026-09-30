@@ -4,8 +4,8 @@ from contextlib import contextmanager
 from neo4j import GraphDatabase
 
 from app.core.config import settings
-from app.services.jev_client import jev_client
 from app.models.graph import CachedFile, CodeFile, CodeSymbol, ImportEdge, RepositoryGraph
+from app.services.jev_client import jev_client
 
 WRITE_BATCH_SIZE = 250
 GRAPH_DEFAULT_NODE_LIMIT = 80

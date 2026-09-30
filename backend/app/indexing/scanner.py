@@ -1,15 +1,15 @@
+import asyncio
 import hashlib
 import os
 from pathlib import Path
 
-import asyncio
 from app.core.config import settings
-from app.services.jev_client import jev_client
 from app.indexing.discovery import language_for, safe_relative, source_files
 from app.indexing.git_history import file_churn
 from app.indexing.js_parser import parse_js_like
 from app.indexing.python_parser import parse_python
 from app.models.graph import CachedFile, CodeFile, RepositoryGraph
+from app.services.jev_client import jev_client
 
 
 class UnsafeRepositoryPath(ValueError):

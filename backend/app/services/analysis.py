@@ -2,9 +2,9 @@ import asyncio
 from pathlib import Path
 
 from app.core.config import settings
+from app.services.jev_client import jev_client
 from app.services.llm import llm_client
 from app.services.neo4j_store import Neo4jStore
-from app.services.jev_client import jev_client
 
 
 async def answer_architecture_question(

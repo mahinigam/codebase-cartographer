@@ -13,10 +13,9 @@ from app.indexing.scanner import (
 )
 
 
-
 @pytest.fixture(autouse=True)
 def mock_jev_responses(monkeypatch):
-    from app.services.jev_client import jev_client, JevResult, JevDecision
+    from app.services.jev_client import JevDecision, JevResult, jev_client
 
     async def dummy_classify(*args, **kwargs):
         return JevResult({

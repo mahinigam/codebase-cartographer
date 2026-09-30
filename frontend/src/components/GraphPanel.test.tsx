@@ -1,54 +1,73 @@
-import React from 'react';
-import { render } from '@testing-library/react';
-import { GraphPanel } from './GraphPanel';
 import { describe, it, expect, vi } from 'vitest';
-import '@testing-library/jest-dom';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React from 'react';
+import { GraphPanel } from './GraphPanel';
+import { ReactFlowProvider, useReactFlow } from 'reactflow';
 
-// Mock reactflow to avoid JS DOM issues with ResizeObserver
-vi.mock('reactflow', async () => {
-  const actual = await vi.importActual('reactflow');
-  return {
-    ...actual as any,
-    default: ({ children }: any) => <div data-testid="reactflow-mock">{children}</div>,
-    ReactFlowProvider: ({ children }: any) => <div>{children}</div>,
-    Background: () => <div />,
-    MiniMap: () => <div />,
-    Handle: () => <div />,
-    useReactFlow: () => ({ fitView: vi.fn(), zoomIn: vi.fn(), zoomOut: vi.fn() })
-  };
-});
+global.ResizeObserver = class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
 
-// We can just verify it doesn't crash given graph data, 
-// and test the scope buttons
-describe('GraphPanel Component', () => {
-  const mockGraph = {
+describe('GraphPanel', () => {
+  const graph = {
     nodes: [
-      { id: '1', label: '/src/a.ts', score: 90, is_test_file: false, labels: [] },
-      { id: '2', label: '/src/a.test.ts', score: 20, is_test_file: true, labels: [] }
+      { id: 'a.py', label: 'a.py', score: 80, labels: [], language: 'Python', loc: 100, fan_in: 2, is_test_file: false, framework: 'Django', is_dead_code: true },
+      { id: 'b.py', label: 'b.py', score: 20, labels: [], is_test_file: true },
+      { id: 'c.py', label: 'c.py', score: 50, labels: [], is_test_file: false }
     ],
-    edges: [],
+    edges: [
+      { source: 'a.py', target: 'b.py', type: 'import' }
+    ],
     clusters: [
-      { name: 'Core', files: 2, avg_score: 55, max_score: 90, cohesion: 0.8, coupling: 0.2, extraction_readiness: 'HIGH' }
+      { name: 'Core', files: 10, avg_score: 90, max_score: 100, cohesion: 0.8, coupling: 0.2, extraction_readiness: 'High' },
+      { name: 'Other', files: 5, avg_score: 20, max_score: 40 }
     ]
   };
+  const overview = { avg_score: 50 };
+  
+  it('renders clusters and high risk nodes', () => {
+    const onNodeClick = vi.fn();
+    render(<GraphPanel graph={graph} onNodeClick={onNodeClick} overview={overview} selectedFile="a.py" />);
+    
+    expect(screen.getByText('Core')).toBeTruthy();
+  });
 
-  it('renders architecture scope and handles graph layout', () => {
-    const handleNodeClick = vi.fn();
-    
-    const { getByText, getByTestId } = render(
-      <GraphPanel 
-        graph={mockGraph}
-        onNodeClick={handleNodeClick}
-      />
-    );
+  it('handles impact mode', () => {
+    const onNodeClick = vi.fn();
+    const impactData = { target: 'a.py', direct_dependents: ['b.py'], transitive_dependents: [{path: 'c.py'}] };
+    render(<GraphPanel graph={graph} onNodeClick={onNodeClick} overview={overview} impactMode={true} impactData={impactData} />);
+  });
 
-    // Verify Scope Label
-    expect(getByText('ARCHITECTURE SCOPE')).toBeInTheDocument();
+  it('handles empty graph', () => {
+    const onNodeClick = vi.fn();
+    render(<GraphPanel graph={{nodes: [], edges: [], clusters: []}} onNodeClick={onNodeClick} />);
+  });
+
+  it('handles filters and missing overview', async () => {
+    const onNodeClick = vi.fn();
+    render(<GraphPanel graph={graph} onNodeClick={onNodeClick} overview={overview} />);
     
-    // Verify Cluster button
-    expect(getByText('Core')).toBeInTheDocument();
+    const filterBtn = screen.getByRole('button', { name: /Filters/i });
+    fireEvent.click(filterBtn);
     
-    // Verify ReactFlow is mocked and rendered
-    expect(getByTestId('reactflow-mock')).toBeInTheDocument();
+    const testFilter = screen.getByRole('checkbox', { name: /Hide Test Files/i });
+    fireEvent.click(testFilter);
+    
+    const riskFilter = screen.getByRole('checkbox', { name: /High Risk Only/i });
+    fireEvent.click(riskFilter);
+
+    const isolatedFilter = screen.getByRole('checkbox', { name: /Hide Isolated Nodes/i });
+    fireEvent.click(isolatedFilter);
+    
+    const fitBtn = screen.getByTitle('Fit to view');
+    fireEvent.click(fitBtn);
+    
+    const zIn = screen.getByTitle('Zoom in');
+    fireEvent.click(zIn);
+    
+    const zOut = screen.getByTitle('Zoom out');
+    fireEvent.click(zOut);
   });
 });

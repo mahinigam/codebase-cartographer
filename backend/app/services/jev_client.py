@@ -8,7 +8,6 @@ for all 10 integration bonds. Falls back gracefully when Jev is unavailable.
 import logging
 from typing import Any
 
-import httpx
 from typesafe_sdk import AsyncTypeSafeClient, Choice, Noul, Score
 
 from app.core.config import settings

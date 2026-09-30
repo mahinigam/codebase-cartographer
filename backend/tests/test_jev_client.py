@@ -1,7 +1,7 @@
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.core.config import settings
+import pytest
+
 from app.services.jev_client import JevClient, JevDecision, JevResult
 
 

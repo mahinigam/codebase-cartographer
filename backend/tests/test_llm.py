@@ -1,7 +1,6 @@
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
+import pytest
 from google.genai import errors
 
 from app.core.config import settings

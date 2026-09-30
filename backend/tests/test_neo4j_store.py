@@ -1,5 +1,7 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock, call
+
 
 class MockResult:
     def __init__(self, data):
@@ -14,7 +16,7 @@ class MockResult:
 
 @pytest.fixture
 def store():
-    with patch("app.services.neo4j_store.GraphDatabase") as mock_gdb:
+    with patch("app.services.neo4j_store.GraphDatabase"):
         from app.services.neo4j_store import Neo4jStore
         s = Neo4jStore()
         # Ensure driver is properly mocked
@@ -23,12 +25,12 @@ def store():
 
 from app.models.graph import CodeFile, CodeSymbol, ImportEdge, RepositoryGraph
 from app.services.neo4j_store import (
-    _search_words,
     GRAPH_MAX_EDGE_LIMIT,
     GRAPH_MAX_NODE_LIMIT,
     WRITE_BATCH_SIZE,
     Neo4jStore,
     _batched,
+    _search_words,
     clamp_graph_limits,
 )
 
@@ -252,7 +254,7 @@ def test_neo4j_get_existing_summary(store):
 
 @pytest.fixture(autouse=True)
 def mock_jev_responses(monkeypatch):
-    from app.services.jev_client import jev_client, JevResult, JevDecision
+    from app.services.jev_client import JevDecision, JevResult, jev_client
     
     async def dummy_assess(*args, **kwargs):
         return JevResult({
@@ -265,7 +267,7 @@ def mock_jev_responses(monkeypatch):
 
 
 def test_ensure_schema():
-    with patch("app.services.neo4j_store.GraphDatabase.driver") as mock_driver:
+    with patch("app.services.neo4j_store.GraphDatabase.driver"):
         store = Neo4jStore()
         mock_session = MagicMock()
         store.driver.session.return_value.__enter__.return_value = mock_session
@@ -275,14 +277,14 @@ def test_ensure_schema():
 
 def test_ensure_schema_invalid_dim():
     with patch("app.core.config.settings.embedding_dimensions", 0):
-        with patch("app.services.neo4j_store.GraphDatabase.driver") as mock_driver:
+        with patch("app.services.neo4j_store.GraphDatabase.driver"):
             store = Neo4jStore()
             with pytest.raises(ValueError):
                 store.ensure_schema()
 
 
 def test_upsert_repository_graph():
-    with patch("app.services.neo4j_store.GraphDatabase.driver") as mock_driver:
+    with patch("app.services.neo4j_store.GraphDatabase.driver"):
         store = Neo4jStore()
         mock_session = MagicMock()
         store.driver.session.return_value.__enter__.return_value = mock_session
@@ -295,7 +297,7 @@ def test_upsert_repository_graph():
 
 
 def test_scan_cache():
-    with patch("app.services.neo4j_store.GraphDatabase.driver") as mock_driver:
+    with patch("app.services.neo4j_store.GraphDatabase.driver"):
         store = Neo4jStore()
         mock_session = MagicMock()
         store.driver.session.return_value.__enter__.return_value = mock_session
@@ -327,7 +329,7 @@ def test_search_files_empty():
 
 
 def test_file_detail_not_found():
-    with patch("app.services.neo4j_store.GraphDatabase.driver") as mock_driver:
+    with patch("app.services.neo4j_store.GraphDatabase.driver"):
         store = Neo4jStore()
         mock_session = MagicMock()
         store.driver.session.return_value.__enter__.return_value = mock_session

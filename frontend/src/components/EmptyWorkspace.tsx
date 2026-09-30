@@ -8,7 +8,7 @@ type Props = {
 };
 
 export function EmptyWorkspace({ defaultRepoPath, onScan, loading }: Props) {
-  const [path, setPath] = useState(defaultRepoPath);
+  const [path, setPath] = useState(defaultRepoPath || "");
   const [summarize, setSummarize] = useState(true);
 
   const handleSubmit = (e: React.FormEvent) => {

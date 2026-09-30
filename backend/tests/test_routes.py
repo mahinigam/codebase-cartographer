@@ -1,14 +1,13 @@
-from fastapi.testclient import TestClient
-from unittest.mock import patch, AsyncMock, MagicMock
-from app.main import app
-
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
 from app.api import routes
 from app.core.config import settings
+from app.main import app
 
 
 def test_api_token_is_optional_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -174,6 +173,7 @@ def test_scan(mock_scan, mock_validate, mock_store_fixture):
 @pytest.mark.asyncio
 async def test_scan_unsafe_repo_path(monkeypatch):
     from starlette.testclient import TestClient
+
     from app.main import app
     client = TestClient(app)
     from app.indexing.scanner import UnsafeRepositoryPath
@@ -187,6 +187,7 @@ async def test_scan_unsafe_repo_path(monkeypatch):
 @pytest.mark.asyncio
 async def test_scan_unsafe_repo_from_scan(monkeypatch, mock_store_fixture):
     from starlette.testclient import TestClient
+
     from app.main import app
     client = TestClient(app)
     from app.indexing.scanner import UnsafeRepositoryPath
@@ -200,9 +201,11 @@ async def test_scan_unsafe_repo_from_scan(monkeypatch, mock_store_fixture):
 
 @pytest.mark.asyncio
 async def test_scan_summary_exception(monkeypatch, mock_store_fixture):
-    from starlette.testclient import TestClient
-    from app.main import app
     from unittest.mock import MagicMock
+
+    from starlette.testclient import TestClient
+
+    from app.main import app
     client = TestClient(app)
     monkeypatch.setattr("app.api.routes.validate_repo_path", lambda x: "/repo")
     mock_graph = MagicMock()
