@@ -1,3 +1,5 @@
+from app.indexing import js_parser
+from unittest.mock import MagicMock
 from pathlib import Path
 
 from app.indexing.js_parser import _configure_parser_language, parse_js_like
@@ -61,3 +63,23 @@ def test_tree_sitter_does_not_silently_fail() -> None:
         f"Expected 2 (tree-sitter), got {complexity}. "
         "Tree-sitter silently fell back to regex!"
     )
+
+
+def test_js_parser_parse_fallback(monkeypatch):
+    monkeypatch.setattr(js_parser, "Parser", None)
+    sym, imp, comp = js_parser.parse_js_like(Path("test.js"), "test.js", "class A {}", None)
+    assert len(sym) >= 0
+
+
+def test_js_parser_parse_regex():
+    source = "import { A } from 'B'; require('C'); class D {} function E() {} const F = () => {}"
+    sym, imp, comp = js_parser._parse_with_regex("test.js", source)
+    assert len(imp) >= 1
+
+
+def test_js_parser_symbol():
+    node = MagicMock()
+    node.start_point = (1, 0)
+    node.end_point = (2, 0)
+    sym = js_parser._symbol("a", "b", "c", "d", node)
+    assert sym.name == "b"

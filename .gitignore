@@ -29,3 +29,19 @@ query_output*.json
 
 *.tsbuildinfo
 next-env.d.ts
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python test coverage outputs
+.coverage
+htmlcov/
+
+# Node/npm logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

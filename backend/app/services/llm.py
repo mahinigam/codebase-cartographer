@@ -4,7 +4,6 @@ import logging
 import httpx
 from google import genai
 from google.genai import errors
-from google.genai.types import TaskType
 
 from app.core.config import settings
 
@@ -71,18 +70,12 @@ class LLMClient:
         return response.text
 
     async def _gemini_embed(self, text: str, task: str) -> list[float]:
-        # Maps the string "RETRIEVAL_DOCUMENT" to TaskType.RETRIEVAL_DOCUMENT etc.
-        try:
-            task_type = getattr(TaskType, task)
-        except AttributeError:
-            task_type = TaskType.RETRIEVAL_DOCUMENT
-            
         model_name = settings.gemini_embedding_model
         
         response = await self.gemini_client.aio.models.embed_content(
             model=model_name,
             contents=text,
-            config={"task_type": task_type}
+            config={"task_type": task}
         )
         return response.embeddings[0].values
 
