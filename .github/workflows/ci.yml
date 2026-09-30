@@ -22,7 +22,9 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install backend
-        run: python -m pip install -e "backend/[dev]"
+        run: |
+          python -m pip install uv
+          cd backend && uv sync
 
       - name: Install frontend
         working-directory: frontend
@@ -31,4 +33,4 @@ jobs:
       - name: Run quality checks
         env:
           PYTHON_BIN: python
-        run: bash scripts/check.sh
+        run: bash ./check.sh
