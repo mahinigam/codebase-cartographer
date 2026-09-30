@@ -20,3 +20,8 @@ def block_requests_library(monkeypatch):
 
 def _raise_net_err():
     raise RuntimeError("Network access disabled (requests library blocked)")
+
+@pytest.fixture(autouse=True)
+def _mock_jev_client_enabled(monkeypatch):
+    from app.services.jev_client import jev_client
+    monkeypatch.setattr(jev_client, "enabled", True)
