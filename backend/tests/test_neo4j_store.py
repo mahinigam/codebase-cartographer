@@ -249,6 +249,21 @@ def test_neo4j_get_existing_summary(store):
     assert summary["text"] == "old summary"
 
 
+
+@pytest.fixture(autouse=True)
+def mock_jev_responses(monkeypatch):
+    from app.services.jev_client import jev_client, JevResult, JevDecision
+    
+    async def dummy_assess(*args, **kwargs):
+        return JevResult({
+            "cohesion": JevDecision({"score": 5}),
+            "coupling": JevDecision({"score": 2}),
+            "extraction_readiness": JevDecision({"choice": "easy"})
+        })
+
+    monkeypatch.setattr(jev_client, "assess_cluster", dummy_assess)
+
+
 def test_ensure_schema():
     with patch("app.services.neo4j_store.GraphDatabase.driver") as mock_driver:
         store = Neo4jStore()
