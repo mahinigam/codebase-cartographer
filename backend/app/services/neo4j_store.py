@@ -360,7 +360,7 @@ class Neo4jStore:
             WITH cluster, keys, fk, b.key AS bk,
                  CASE WHEN b.key IN keys THEN 1 ELSE 0 END AS is_internal,
                  CASE WHEN b.key IS NOT NULL AND NOT b.key IN keys THEN 1 ELSE 0 END AS is_external_out
-            WITH cluster,
+            WITH cluster, keys,
                  sum(is_internal) AS internal_edges,
                  sum(is_external_out) AS external_out
             OPTIONAL MATCH (ext:File)-[:IMPORTS]->(target:File)
