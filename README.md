@@ -1,157 +1,824 @@
 # Codebase Cartographer
 
-**Structural forensics engine and interactive mapping tool for software repositories.**
+**Structural forensics and code-intelligence infrastructure for understanding software repositories.**
 
-Codebase Cartographer transforms any codebase into a navigable Neo4j knowledge graph of files, symbols, dependencies, Git history, risk signals, and AI-generated architectural summaries. It combines deterministic static analysis with a two-tier AI architecture — fast structured classification (TypeSafe Jev) and deep generative reasoning (Gemini / Ollama) — to expose the true architecture hidden within your code.
+Codebase Cartographer turns a source repository into an **interactive knowledge graph of files, symbols, dependencies, Git history, structural risk, and semantic evidence**.
 
----
+It combines deterministic static analysis, graph reasoning, structured AI decisions, vector retrieval, and generative reasoning into a single investigation workflow.
 
-## Why It Matters
-
-Large codebases are notoriously difficult to change safely. Their real architecture is buried under complex import trees, historical patches, and undocumented conventions. Cartographer provides engineers and architects with a professional instrument to answer critical questions:
-
-- **Where does this behavior live?** — Graph-powered file and symbol search across the full codebase topology.
-- **Which files are structurally load-bearing?** — Deterministic risk scoring, enhanced by semantic AI analysis.
-- **What might break if I refactor this file?** — Transitive dependency tracing with blast-radius estimation.
-- **What does this undocumented module actually do?** — AI-generated per-file architectural summaries.
-- **Is this cluster extractable?** — Module cohesion and coupling analysis with extraction-readiness assessment.
-- **Is any of my code dead?** — Probabilistic dead-code detection using zero-fan-in candidates and AI evaluation.
+> **Understand the architecture before you change the code.**
 
 ---
 
-## Core Features
+## Why Codebase Cartographer?
 
-### Interactive Workspace
+A large repository does not come with a reliable architectural map.
 
-| Feature | Description |
+The important relationships are distributed across imports, dependency chains, historical changes, shared utilities, undocumented modules, and patterns that only become obvious when many signals are considered together.
+
+Cartographer is built around a simple idea:
+
+**Software architecture should be derived from evidence, not guessed from filenames or generated from an LLM alone.**
+
+It helps answer questions such as:
+
+- **Where does this behavior actually live?**
+- **Which files are structurally load-bearing?**
+- **What is likely to be affected if I change this module?**
+- **Which parts of the repository are tightly coupled?**
+- **Does this file appear to be test code, infrastructure, UI, or business logic?**
+- **Which modules deserve architectural attention first?**
+- **What does an unfamiliar file appear to do?**
+- **Can I investigate the repository conversationally without losing the underlying evidence?**
+
+---
+
+## What It Does
+
+Cartographer performs a multi-stage analysis of a repository:
+
+```text
+Repository
+    │
+    ▼
+File Discovery
+    │
+    ├── Python AST analysis
+    ├── JavaScript / TypeScript Tree-sitter analysis
+    └── Git history mining
+    │
+    ▼
+Dependency Resolution
+    │
+    ▼
+Deterministic Structural Analysis
+    │
+    ├── Fan-in / fan-out
+    ├── Complexity
+    ├── Churn
+    └── Load-bearing risk
+    │
+    ▼
+Structured AI Analysis (Jev)
+    │
+    ├── Architectural role
+    ├── Test detection
+    ├── Framework detection
+    ├── Semantic risk
+    ├── Dead-code candidates
+    ├── Query routing
+    ├── Cluster assessment
+    └── Refactor safety
+    │
+    ▼
+Neo4j Knowledge Graph
+    │
+    ├── Files
+    ├── Symbols
+    ├── Import edges
+    ├── External dependencies
+    └── AI-generated summaries + embeddings
+    │
+    ▼
+Investigation Layer
+    │
+    ├── Interactive dependency map
+    ├── Risk hotspots
+    ├── File inspector
+    ├── Natural-language architecture Q&A
+    └── Change-impact analysis
+```
+
+The important design decision is that **AI is not the foundation of the system**.
+
+The repository is first converted into deterministic structural evidence. AI then enriches, classifies, prioritizes, and explains that evidence.
+
+---
+
+# Core Capabilities
+
+## 1. Repository Mapping
+
+Cartographer builds a navigable graph of the repository rather than treating the codebase as a collection of independent files.
+
+The graph captures:
+
+- repositories
+- source files
+- functions and classes
+- internal imports
+- external dependencies
+- AI-generated file summaries
+- semantic embeddings
+- structural metrics
+- Git history signals
+- AI-derived architectural metadata
+
+The graph is persisted in Neo4j and can be queried independently of the generative AI layer.
+
+---
+
+## 2. Static Code Analysis
+
+### Python
+
+Python repositories are parsed with the standard `ast` module.
+
+Cartographer extracts:
+
+- classes
+- functions
+- async functions
+- imports
+- `from ... import ...` statements
+- line ranges
+- symbol signatures
+- cyclomatic-style structural complexity
+
+### JavaScript / TypeScript
+
+JavaScript and TypeScript are analyzed using Tree-sitter, with a regex fallback for parser failures or environments where Tree-sitter is unavailable.
+
+The parser recognizes common:
+
+- ES module imports
+- CommonJS `require()`
+- functions
+- arrow functions
+- classes
+- control-flow constructs used in complexity estimation
+
+This gives the system a language-aware structural representation before any AI analysis occurs.
+
+---
+
+## 3. Dependency Resolution
+
+Import statements are normalized into actual repository relationships where possible.
+
+### Python
+
+The resolver handles common:
+
+- dotted module imports
+- relative imports
+- package-style modules
+- `__init__.py` aliases
+
+### JavaScript / TypeScript
+
+The resolver handles common:
+
+- relative imports
+- extensionless modules
+- `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`
+- `/index` conventions
+
+Resolved dependencies become graph edges:
+
+```text
+File A ──IMPORTS──▶ File B
+```
+
+Unresolved imports are retained as external dependencies:
+
+```text
+File A ──DEPENDS_ON──▶ "package-name"
+```
+
+This distinction allows Cartographer to reason separately about **internal architecture** and **external coupling**.
+
+---
+
+# Structural Risk Engine
+
+One of the project's central design choices is that structural risk is not delegated entirely to an LLM.
+
+Cartographer first calculates a deterministic load-bearing score from repository evidence.
+
+```text
+Risk =
+    45% × normalized fan-in
+  + 25% × normalized complexity
+  + 20% × normalized churn
+  + 10% × normalized fan-out
+```
+
+High fan-in indicates that many modules depend on a file.
+
+Complexity captures structural branching.
+
+Git churn approximates how actively the file changes.
+
+Fan-out captures how broadly the module itself depends on other modules.
+
+### Trivial-file damping
+
+A highly reused utility should not automatically outrank a genuinely complex architectural module.
+
+For small, simple files, fan-in is therefore dampened before the final score is calculated.
+
+### Semantic enhancement
+
+Files with meaningful deterministic risk can then be evaluated by the structured AI layer.
+
+The semantic score is blended with the deterministic score rather than replacing it.
+
+This produces a **hybrid structural + semantic risk model**.
+
+---
+
+# Two-Tier AI Architecture
+
+Cartographer deliberately separates **decision-making** from **generative reasoning**.
+
+## System One — TypeSafe Jev
+
+Jev acts as the structured decision engine.
+
+It provides categorical, probabilistic, and numeric decisions instead of free-form prose.
+
+The current integration covers ten analysis bonds.
+
+| Bond | Purpose |
 |---|---|
-| **Resizable Panel Layout** | Three-panel workspace (Repository Explorer, Graph Canvas, Inspector) powered by `react-resizable-panels`. |
-| **Infinite Graph Canvas** | Hardware-accelerated ReactFlow canvas with Dagre DAG layout. Pan and zoom with trackpad gestures. Includes a glassmorphic MiniMap. |
-| **Command Palette** | `Cmd+K` fuzzy search across files, symbols, and AI queries. Debounced real-time results with keyboard navigation. |
-| **Graph Filters** | Toggle test files, high-risk-only view (> 75 score), and isolated nodes directly over the graph. |
-| **Repository Explorer** | Collapsible file tree with Architecture and Risk Hotspot views. Inline risk indicators and repository metadata. |
-| **Inspector Panel** | Deep file detail: risk profile with bar-chart breakdown (fan-in, complexity, churn, fan-out), AI summary, symbols, imports, dependents, external dependencies, Jev metadata (role, framework, risk category, dead code), and refactor safety gate. |
-| **Ask Cartographer** | Natural-language architecture queries answered with graph topology + vector evidence, rendered as Markdown with clickable evidence links. |
-| **Impact Analysis** | Visual dependency trace showing direct and transitive dependents, with Jev-powered refactor safety assessment (blast radius, recommended strategy). |
-| **Toast Notifications** | Non-blocking success/error notifications for scan results and API errors. |
-| **Empty Workspace Landing** | Clean onboarding state for first-time users with a repository path input form. |
+| **File Classification** | Identify architectural role |
+| **Semantic Risk** | Estimate semantic refactoring risk |
+| **Test Detection** | Identify test/spec/fixture files |
+| **Query Routing** | Decide how an architecture question should be answered |
+| **Cluster Assessment** | Estimate cohesion, coupling, and extraction readiness |
+| **Refactor Safety** | Estimate safety, blast radius, and strategy |
+| **Summary Triage** | Prioritize files for expensive summarization |
+| **Framework Detection** | Identify ecosystem and architectural layer |
+| **Re-summarization Check** | Decide whether an existing summary is stale |
+| **Dead Code Detection** | Evaluate zero-fan-in candidates |
 
-### Analysis Engine
+This is useful because many repository-analysis tasks do **not** require a generative model.
 
-| Capability | Implementation |
-|---|---|
-| **Python Parsing** | `ast.parse` — extracts classes, functions, async functions, imports, `from` imports, and cyclomatic complexity (if/for/while/try/match branches). |
-| **JavaScript/TypeScript Parsing** | Tree-sitter (primary) with regex fallback — extracts ES6 imports, CommonJS `require()`, function/arrow/class declarations, and complexity nodes. |
-| **Git History Mining** | GitPython traverses up to 500 commits to extract per-file churn counts and last-modified timestamps. |
-| **Import Resolution** | Full module resolution for Python (dotted paths, relative imports, `__init__` packages) and JavaScript (relative paths, extensionless resolution, `/index` convention). |
-| **Incremental Rescans** | SHA-256 content fingerprints + stat fingerprints (size + mtime). Unchanged files reuse cached symbols and import edges from Neo4j. |
-| **Risk Scoring** | Weighted composite: 45% fan-in (dampened for trivial utilities < 30 LOC with complexity ≤ 1), 25% complexity, 20% churn, 10% fan-out. Enhanced by Jev semantic scoring (70/30 blend). |
+For example:
 
-### Two-Tier AI Architecture
+```text
+"What is this file's architectural role?"
+```
 
-Cartographer employs a dual-tier AI strategy to balance speed, structured outputs, and deep reasoning:
+can be treated as a structured classification problem.
 
-#### System One — TypeSafe AI (Jev)
+Likewise:
 
-Integrated via the official `typesafe-sdk`, Jev acts as the fast, structured decision engine. It uses three decision primitives — **Choice** (categorical classification), **Noul** (probability estimation), and **Score** (numeric rating) — across **10 integration bonds**:
+```text
+"Does this repository need a generated summary for this file?"
+```
 
-| Bond | Name | Primitives | Purpose |
-|---:|---|---|---|
-| 1 | File Classification | Choice | Classify each file's architectural role from 40+ categories (e.g., `core-business-logic`, `api-endpoint-handler`, `ui-component`, `test-unit`). |
-| 2 | Semantic Risk Scoring | Score + Choice | Rate refactoring risk (1–10) and categorize the primary source of risk (e.g., `structural-chokepoint`, `security-critical`). |
-| 3 | Test File Detection | Noul + Choice | Probabilistically detect test/spec/fixture files and categorize them (unit, integration, e2e, snapshot, etc.). |
-| 4 | Query Routing | Choice + Noul | Classify user question intent (13 intents) and decide whether the query needs generative AI or can be answered from graph data alone. |
-| 5 | Cluster Assessment | Score + Score + Choice | Rate directory-cluster cohesion and coupling (1–5) and assess extraction readiness. |
-| 6 | Refactor Safety | Noul + Choice + Score | Evaluate whether a file is safe to refactor in a single PR, recommend a strategy (8 options), and estimate blast radius (1–10). |
-| 7 | Summary Triage | Noul + Score | Decide whether a file warrants an expensive LLM summary call and assign a priority score. |
-| 8 | Framework Detection | Choice + Choice | Identify the framework ecosystem (40+ options) and architectural layer (presentation, api, domain, infrastructure, etc.). |
-| 9 | Re-summarization Check | Noul + Score | Evaluate whether a file's existing AI summary is stale after code changes, to avoid redundant LLM calls. |
-| 10 | Dead Code Detection | Noul + Choice | Flag zero-fan-in files as likely dead code and categorize the reason (abandoned feature, stale migration, etc.). |
+can be treated as a probability/priority decision.
 
-#### System Two — Google Gemini / Ollama
-
-Gemini serves as the primary deep-reasoning layer for:
-
-- **File Summaries**: Truncated source snippets (configurable, default 4,000 chars) are sent to Gemini to generate natural-language architectural summaries.
-- **Embeddings**: `text-embedding-004` generates 768-dimensional vectors stored in a Neo4j vector index for semantic search.
-- **Architecture Q&A**: Full retrieval-augmented generation combining graph evidence and semantic matches.
-- **Impact Narratives**: Detailed Markdown explanations of change impact and risk assessment.
-
-**Fallback Cascade**: Gemini → Ollama (`qwen2.5-coder:7b`) → deterministic structural fallback (Neo4j topology only, no API key required).
+The system does not need to spend a full generative request on every such task.
 
 ---
 
-## Technology Stack
+## System Two — Gemini / Ollama
+
+The generative layer is reserved for tasks where natural-language reasoning adds real value.
+
+It is used for:
+
+### File Summaries
+
+The system sends a bounded source snippet to the configured LLM provider and generates an architectural summary.
+
+### Semantic Retrieval
+
+Generated summaries can be embedded and stored in Neo4j's vector index.
+
+### Architecture Q&A
+
+Questions can combine:
+
+```text
+graph evidence
++
+semantic retrieval
++
+generative reasoning
+```
+
+rather than relying exclusively on the model's internal knowledge.
+
+### Impact Narratives
+
+Dependency results are passed to the generative layer to produce a readable explanation of change impact.
+
+---
+
+## Graceful AI Degradation
+
+AI is treated as an enhancement layer rather than a hard dependency.
+
+The generative cascade is:
+
+```text
+Gemini
+   ↓ unavailable
+Ollama
+   ↓ unavailable
+Deterministic graph-based fallback
+```
+
+This means the structural analysis system can still provide useful repository information even when external generative services are unavailable.
+
+---
+
+# Incremental Scanning
+
+Cartographer does not need to fully re-parse every repository on every scan.
+
+For indexed repositories, the scanner can reuse cached state from Neo4j.
+
+It compares:
+
+- file size
+- modification timestamp
+- SHA-256 content fingerprint
+
+Unchanged files can reuse cached:
+
+- symbol information
+- import edges
+- structural metadata
+
+This gives the scanner an incremental execution path instead of treating every rescan as a clean rebuild.
+
+---
+
+# Git History as an Architectural Signal
+
+Static structure alone does not tell the full story.
+
+Cartographer also mines Git history and tracks:
+
+- file churn
+- last modification information
+
+The current implementation examines recent commit history and uses churn as one of the structural signals in the risk model.
+
+This creates a useful distinction:
+
+```text
+How connected is this file?
++
+How complex is it?
++
+How frequently does it change?
+=
+How much architectural attention does it deserve?
+```
+
+---
+
+# Knowledge Graph
+
+Neo4j is the persistence layer for the repository model.
+
+## Graph Schema
+
+```text
+Repository
+    │
+    └── CONTAINS ──▶ File
+                         │
+                         ├── DEFINES ──▶ Symbol
+                         │
+                         ├── IMPORTS ──▶ File
+                         │
+                         ├── DEPENDS_ON ──▶ ExternalDependency
+                         │
+                         └── SUMMARIZES ──▶ Summary
+```
+
+### Node types
+
+| Node | Purpose |
+|---|---|
+| `Repository` | Repository identity and scan metadata |
+| `File` | Source file and structural metadata |
+| `Symbol` | Functions, classes, and related symbols |
+| `ExternalDependency` | Unresolved third-party dependencies |
+| `Summary` | AI-generated summary plus embedding metadata |
+
+### Why a graph?
+
+Because repository questions are inherently relational.
+
+For example:
+
+```text
+What depends on `neo4j_store.py`?
+```
+
+is a graph traversal.
+
+So is:
+
+```text
+What is the transitive impact of changing `analysis.py`?
+```
+
+and:
+
+```text
+Which modules form a tightly connected architectural cluster?
+```
+
+A graph database gives these relationships a native representation instead of reconstructing them from flat JSON every time.
+
+---
+
+# Semantic Retrieval
+
+Generated summaries can be embedded and indexed in Neo4j.
+
+This allows architecture questions to combine two evidence sources:
+
+### Structural evidence
+
+```text
+imports
+dependents
+symbols
+risk
+complexity
+churn
+```
+
+### Semantic evidence
+
+```text
+vector similarity
++
+AI-generated summaries
+```
+
+The resulting architecture assistant is therefore grounded in both:
+
+**what the graph says**
+
+and
+
+**what the code appears to mean**.
+
+---
+
+# Architecture Questions
+
+The `/api/query` pipeline uses structured routing before deciding how much generative reasoning is necessary.
+
+Conceptually:
+
+```text
+User Question
+      │
+      ▼
+Jev Query Router
+      │
+      ├── File navigation ───────▶ graph search
+      │
+      ├── Risk question ─────────▶ structural risk data
+      │
+      ├── Dependency question ──▶ graph traversal
+      │
+      └── Complex question ──────▶
+                  │
+                  ├── graph retrieval
+                  ├── semantic retrieval
+                  └── Gemini / Ollama
+```
+
+This lets simple questions take a cheaper structural path while complex questions can use deeper reasoning.
+
+---
+
+# Impact Analysis
+
+One of the most useful workflows is change-impact investigation.
+
+Given a target file, Cartographer can determine:
+
+- direct dependents
+- transitive dependents
+- traversal depth
+- structural blast radius
+
+The system then applies the refactor-safety decision layer and can generate a human-readable explanation.
+
+Conceptually:
+
+```text
+Target File
+    │
+    ▼
+Dependency Traversal
+    │
+    ├── Direct dependents
+    └── Transitive dependents
+            │
+            ▼
+     Refactor Safety
+            │
+            ├── safety probability
+            ├── blast radius
+            └── suggested strategy
+            │
+            ▼
+       AI explanation
+```
+
+This turns the graph from a visualization into an **engineering investigation tool**.
+
+---
+
+# Interactive Investigation Workspace
+
+The frontend is designed around investigation rather than dashboards.
+
+## Repository Explorer
+
+Browse:
+
+- repositories
+- files
+- architecture views
+- risk hotspots
+
+## Graph Canvas
+
+ReactFlow renders the repository topology using a Dagre layout.
+
+The graph supports:
+
+- pan
+- zoom
+- node selection
+- dependency highlighting
+- risk-oriented filtering
+- test-file filtering
+- isolated-node filtering
+- bounded graph slices for large repositories
+
+## Inspector
+
+Selecting a file opens detailed evidence including:
+
+- structural risk
+- risk components
+- symbols
+- imports
+- dependents
+- external dependencies
+- architectural role
+- framework
+- semantic risk category
+- dead-code signal
+- AI summary
+- impact analysis
+
+## Command Palette
+
+`Cmd+K` provides a fast entry point for:
+
+- repository search
+- file lookup
+- symbol lookup
+- architecture questions
+
+## Ask Cartographer
+
+Natural-language queries return Markdown responses with supporting evidence that can be used to navigate back into the repository.
+
+---
+
+# Example Investigation Workflow
+
+A typical session looks like this:
+
+```text
+1. Analyze repository
+        ↓
+2. Build structural graph
+        ↓
+3. Inspect architecture / risk hotspots
+        ↓
+4. Select a suspicious or important file
+        ↓
+5. Inspect symbols + dependencies + risk
+        ↓
+6. Trace impact
+        ↓
+7. Ask an architectural question
+        ↓
+8. Inspect supporting evidence
+        ↓
+9. Decide how to approach the change
+```
+
+The system is designed to keep the engineer close to the underlying evidence throughout the process.
+
+---
+
+# Technology Stack
 
 | Layer | Technology |
 |---|---|
-| **Frontend** | Next.js 16 (App Router) · React 19 · TypeScript 5.8 |
-| **Backend** | FastAPI · Python 3.12+ · managed via `uv` |
-| **Graph Database** | Neo4j 5 Community Edition (with APOC plugin) |
-| **Static Analysis** | Python `ast` module · Tree-sitter via `tree-sitter-language-pack` |
-| **System One AI** | TypeSafe AI Jev via `typesafe-sdk ≥ 0.7.2` |
-| **System Two AI** | Google Gemini via `google-genai ≥ 2.25.0` · Ollama (fallback) |
-| **Embeddings** | Gemini `text-embedding-004` · Ollama `nomic-embed-text` (fallback) |
-| **Graph Visualization** | ReactFlow 11 · Dagre (`@dagrejs/dagre`) |
-| **UI Framework** | `react-resizable-panels` · `lucide-react` (icons) · `react-markdown` + `remark-gfm` |
-| **Testing (Backend)** | `pytest` · `pytest-asyncio` · `pytest-cov` · `ruff` · `mypy` |
-| **Testing (Frontend)** | `vitest` · `@testing-library/react` · `@vitest/coverage-v8` · `jsdom` |
-| **CI/CD** | GitHub Actions (Python 3.12, Node 22) |
-| **Containerization** | Docker Compose (Neo4j, Backend, Frontend) |
+| **Frontend** | Next.js 16 · React 19 · TypeScript |
+| **Backend** | FastAPI · Python · `uv` |
+| **Graph Database** | Neo4j 5 Community Edition |
+| **Python Analysis** | Python `ast` |
+| **JS/TS Analysis** | Tree-sitter + regex fallback |
+| **Git Analysis** | GitPython |
+| **Structured AI** | TypeSafe AI / Jev |
+| **Generative AI** | Google Gemini · Ollama fallback |
+| **Embeddings** | Gemini / Ollama fallback |
+| **Graph Visualization** | ReactFlow · Dagre |
+| **UI** | `react-resizable-panels` · `lucide-react` · React Markdown |
+| **Backend Testing** | pytest · pytest-asyncio · pytest-cov |
+| **Frontend Testing** | Vitest · Testing Library |
+| **Static Checks** | Ruff · mypy · TypeScript |
+| **CI** | GitHub Actions |
+| **Containerization** | Docker Compose |
 
 ---
 
-## API Reference
+# API Surface
 
-All endpoints are prefixed with `/api` and optionally require a Bearer token or `X-API-Key` header when `API_TOKEN` is configured.
+All endpoints are exposed beneath `/api`.
 
-| Method | Endpoint | Description |
+| Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/api/health` | Health check — returns API and Neo4j connectivity status. |
-| `POST` | `/api/scan` | Scan a repository. Accepts `path`, `summarize` (trigger AI summaries), `incremental` (reuse cached files). Rate-limited. |
-| `GET` | `/api/overview` | Repository statistics: file count, symbol count, average risk score, top load-bearing files. |
-| `GET` | `/api/repositories` | List all indexed repositories with file counts and timestamps. |
-| `GET` | `/api/files` | List all files for a repository with metrics (LOC, complexity, churn, score, role, risk). |
-| `GET` | `/api/graph` | Paginated graph slice: top-N nodes by risk score, their import edges, directory clusters with Jev cohesion/coupling metrics. Configurable node limit (default 80, max 400) and edge limit (default 200, max 2,000). |
-| `GET` | `/api/search` | Keyword search across file paths, symbol names, imports, dependents, and external dependencies. |
-| `POST` | `/api/query` | Natural-language architecture question. Combines Jev query routing, graph retrieval, semantic search, and Gemini reasoning. |
-| `POST` | `/api/impact` | Impact analysis for a file: direct dependents, transitive dependents (configurable depth 1–6), Jev refactor safety gate, and Gemini narrative. |
-| `GET` | `/api/file-detail` | Full file detail: all metrics, risk component breakdown, symbols, imports, dependents, external deps, AI summary. |
-| `POST` | `/api/summaries` | Generate AI summaries for a repository. Jev triages and prioritizes files before spending Gemini calls. Rate-limited. |
+| `GET` | `/api/health` | API + Neo4j health status |
+| `POST` | `/api/scan` | Scan or incrementally rescan a repository |
+| `GET` | `/api/overview` | Repository statistics + load-bearing files |
+| `GET` | `/api/repositories` | Indexed repositories |
+| `GET` | `/api/files` | Indexed file metadata |
+| `GET` | `/api/graph` | Bounded graph slice + architectural clusters |
+| `GET` | `/api/search` | Keyword file/symbol/dependency search |
+| `POST` | `/api/query` | Architecture Q&A |
+| `POST` | `/api/impact` | Dependency impact analysis |
+| `GET` | `/api/file-detail` | Detailed file inspection |
+| `POST` | `/api/summaries` | AI summary generation |
 
 ---
 
-## Quick Start
+# Security & Privacy
 
-### Prerequisites
+Cartographer is designed around a local-first workflow.
 
-- **Neo4j 5** — Community Edition (Docker recommended)
-- **Python 3.12+** — with [uv](https://docs.astral.sh/uv/) package manager
-- **Node.js 22+** — with npm
+### Repository boundaries
 
-### 1. Configure Environment
+`ALLOWED_REPO_ROOTS` can restrict which local paths are eligible for analysis.
+
+### API authentication
+
+When configured, `API_TOKEN` protects the API using either:
+
+- Bearer authentication
+- `X-API-Key`
+
+### Resource controls
+
+The backend provides configurable limits for:
+
+- repository file count
+- scan request frequency
+- graph node count
+- graph edge count
+- summary limits
+
+### Source-code handling
+
+The structural analysis itself operates on local repository files.
+
+External model providers are only involved when those providers are enabled.
+
+Generative summarization uses bounded source snippets rather than automatically sending entire repositories.
+
+For environments requiring stronger privacy guarantees, Ollama can be used as the local generative fallback.
+
+---
+
+# Incremental + Bounded by Design
+
+Large repositories introduce two practical problems:
+
+**recomputation** and **visual overload**.
+
+Cartographer addresses both.
+
+### Incremental scanning
+
+Reuse previously indexed information when files have not changed.
+
+### Bounded graph slices
+
+The API deliberately returns a limited graph slice rather than forcing the browser to render every repository node simultaneously.
+
+### Selective AI work
+
+Jev can triage files and route queries so expensive generative calls are used where they provide the most value.
+
+These three mechanisms work together to keep the system practical as repository size increases.
+
+---
+
+# Development & Testing
+
+The project includes backend and frontend test suites covering core indexing, graph, API, analysis, and UI behavior.
+
+### Backend
+
+- pytest
+- pytest-asyncio
+- pytest-cov
+- Ruff
+- mypy
+
+The backend test suite is configured with a **90% coverage floor**.
+
+### Frontend
+
+- Vitest
+- React Testing Library
+- V8 coverage
+- TypeScript checking
+
+The frontend coverage configuration targets **85% coverage across lines, functions, branches, and statements**.
+
+### Run local checks
+
+```bash
+bash ./check.sh
+```
+
+### Continuous Integration
+
+GitHub Actions runs the repository's automated test and validation workflow for changes to `main` and pull requests.
+
+---
+
+# Docker
+
+The repository can run as a three-service stack:
+
+```text
+┌───────────────────────────┐
+│         Frontend          │
+│       Next.js / React     │
+│         :5173             │
+└─────────────┬─────────────┘
+              │
+              ▼
+┌───────────────────────────┐
+│          Backend          │
+│        FastAPI            │
+│          :8000            │
+└─────────────┬─────────────┘
+              │
+              ▼
+┌───────────────────────────┐
+│          Neo4j            │
+│    Graph + Vector Index   │
+│      :7474 / :7687       │
+└───────────────────────────┘
+```
+
+Ollama can optionally run on the host and provide local generation/embedding fallback support.
+
+---
+
+# Quick Start
+
+## Prerequisites
+
+- Docker / Docker Compose
+- Python 3.12+
+- `uv`
+- Node.js 22+
+- npm
+
+## 1. Configure environment
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and add your credentials:
+Configure the providers you intend to use.
 
-| Variable | Required | Description |
-|---|---|---|
-| `GEMINI_API_KEY` | For AI features | Google Gemini API key |
-| `TYPESAFE_API_KEY` | For Jev features | TypeSafe API key from [console.typesafe.ai](https://console.typesafe.ai/) |
-| `NEO4J_PASSWORD` | Yes | Neo4j password (default: `codebase-cartographer`) |
-| `ALLOWED_REPO_ROOTS` | Production | Comma-separated list of allowed scan paths |
-| `API_TOKEN` | Production | Bearer token for API authentication |
+At minimum, local development requires Neo4j credentials. AI features require the corresponding provider credentials or a local Ollama setup.
 
-### 2. Start Neo4j
+## 2. Start Neo4j
 
 ```bash
 docker compose up -d neo4j
 ```
 
-### 3. Start the Backend
+## 3. Start the backend
 
 ```bash
 cd backend
@@ -159,7 +826,7 @@ uv sync
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
-### 4. Start the Frontend
+## 4. Start the frontend
 
 ```bash
 cd frontend
@@ -167,153 +834,187 @@ npm install
 npm run dev
 ```
 
-Open your browser at **http://localhost:5173**.
+Open:
+
+```text
+http://localhost:5173
+```
 
 ---
 
-## Docker Compose
+# Full Docker Startup
 
-Run the entire stack in isolation:
+To start the complete stack:
 
 ```bash
 docker compose up --build
 ```
 
-This starts three containers:
+The stack exposes:
 
-| Service | Port | Description |
-|---|---|---|
-| `neo4j` | `7474` (browser) / `7687` (bolt) | Graph database with APOC plugin, 512 MB–1 GB heap |
-| `backend` | `8000` | FastAPI server, mounts repo at `/workspace` (read-only) |
-| `frontend` | `5173` | Next.js production build |
+| Service | Port |
+|---|---:|
+| Frontend | `5173` |
+| Backend | `8000` |
+| Neo4j Browser | `7474` |
+| Neo4j Bolt | `7687` |
 
-> **Note:** The backend container mounts the repository at `/workspace` for scanning. If using Ollama, it must be running on the host; Docker connects via `http://host.docker.internal:11434`.
-
----
-
-## Usage Workflow
-
-1. **Open Cartographer** — you are greeted by the landing page. Paste an absolute local repository path and click **Analyze**.
-2. **Scan** — the engine extracts files, symbols, imports, and Git history. Jev classifies each file's role, detects tests and dead code, and enhances risk scores. Everything is written to Neo4j.
-3. **Explore** — the Repository Explorer (left panel) lets you browse the codebase tree. Toggle between Architecture view and Risk Hotspot view.
-4. **Map** — use trackpad gestures to pan and zoom the ReactFlow canvas. Nodes are colored and sized by risk score. Click any node to open the Inspector.
-5. **Inspect** — the Inspector (right panel) shows full file detail: risk breakdown bars, AI summary, symbols, imports, dependents, external dependencies, Jev metadata (architectural role, framework, risk category, dead code flag), and a "Trace Impact" button.
-6. **Ask** — press `Cmd+K` to open the Command Palette, or use the Ask Panel to query the architecture with natural language. Jev routes the query; the answer is grounded in graph and vector evidence.
-7. **Impact** — select a file and run "Trace Impact" to see direct and transitive dependents, blast radius estimation, and a recommended refactoring strategy.
-8. **Summarize** — trigger AI summary generation for the repository. Jev triages which files deserve expensive Gemini calls and assigns priority order.
+For anything beyond local development, replace the example Neo4j credentials and configure the relevant authentication and path restrictions.
 
 ---
 
-## Security & Privacy
+# Repository Structure
 
-- **Local First**: The application indexes local source files. No raw code is uploaded unless an external LLM provider is explicitly configured.
-- **Provider Fallbacks**: System One (Jev) uses lightweight, structured queries. System Two sends up to 4,000 characters of source to Gemini. If Gemini is unavailable, it falls back to Ollama; if both fail, the engine provides a deterministic fallback using Neo4j topology alone. To ensure absolute privacy, disable Gemini and rely entirely on the local Ollama fallback.
-- **Path Constraints**: `validate_repo_path()` enforces `ALLOWED_REPO_ROOTS` — repositories outside configured roots are rejected. Summary generation refuses paths that resolve outside the scanned repository root.
-- **API Security**: Optional `API_TOKEN` protects all endpoints via Bearer token or `X-API-Key`. Rate limiting (`SCAN_RATE_LIMIT_PER_MINUTE`, default 6) and file caps (`SCAN_MAX_FILES`, default 10,000) prevent abuse in shared deployments.
-- **CORS**: Configurable via `CORS_ORIGINS` (default: `http://localhost:5173`). Only `GET` and `POST` methods are allowed.
-
----
-
-## Development & Testing
-
-Codebase Cartographer enforces stringent quality gates across both ecosystems.
-
-### Backend
-
-| Tool | Purpose | Threshold |
-|---|---|---|
-| `pytest` + `pytest-asyncio` | Unit and integration tests | **90% coverage** |
-| `ruff` | Linting (E, F, I, B, UP, S rules) | Zero errors |
-| `mypy` | Static type checking | Zero errors |
-
-### Frontend
-
-| Tool | Purpose | Threshold |
-|---|---|---|
-| `vitest` + `@testing-library/react` | Component and unit tests | **85% coverage** (lines, functions, branches, statements) |
-| `tsc --noEmit` | TypeScript type checking | Zero errors |
-
-### Running All Checks
-
-```bash
-bash ./check.sh
-```
-
-This single script runs backend tests with coverage, ruff lint, mypy type checking, frontend tests with coverage, and TypeScript type checking.
-
-### Continuous Integration
-
-Every push to `main` and every pull request runs the full check suite via GitHub Actions (`ci.yml`) on `ubuntu-latest` with Python 3.12 and Node.js 22.
-
----
-
-## Project Structure
-
-```
+```text
 codebase-cartographer/
+│
 ├── backend/
 │   ├── app/
 │   │   ├── api/
-│   │   │   └── routes.py              # FastAPI endpoints (12 routes)
+│   │   │   └── routes.py
+│   │   │
 │   │   ├── core/
-│   │   │   └── config.py              # Pydantic settings (env vars)
+│   │   │   └── config.py
+│   │   │
 │   │   ├── indexing/
-│   │   │   ├── discovery.py           # File discovery + language detection
-│   │   │   ├── git_history.py         # Git churn mining (GitPython)
-│   │   │   ├── js_parser.py           # JS/TS parser (Tree-sitter + regex)
-│   │   │   ├── python_parser.py       # Python parser (ast module)
-│   │   │   └── scanner.py             # Orchestrator: scan + Jev bonds
+│   │   │   ├── discovery.py
+│   │   │   ├── git_history.py
+│   │   │   ├── js_parser.py
+│   │   │   ├── python_parser.py
+│   │   │   └── scanner.py
+│   │   │
 │   │   ├── models/
-│   │   │   └── graph.py               # Pydantic models (CodeFile, Symbol, etc.)
+│   │   │   └── graph.py
+│   │   │
 │   │   ├── services/
-│   │   │   ├── analysis.py            # Q&A, impact, summaries
-│   │   │   ├── jev_client.py          # TypeSafe Jev SDK wrapper (10 bonds)
-│   │   │   ├── llm.py                 # Gemini/Ollama LLM client
-│   │   │   └── neo4j_store.py         # Neo4j CRUD + graph queries
-│   │   └── main.py                    # FastAPI app factory
-│   ├── tests/                         # pytest test suite (94 tests)
-│   ├── Dockerfile
-│   └── pyproject.toml
+│   │   │   ├── analysis.py
+│   │   │   ├── jev_client.py
+│   │   │   ├── llm.py
+│   │   │   └── neo4j_store.py
+│   │   │
+│   │   └── main.py
+│   │
+│   └── tests/
+│
 ├── frontend/
 │   ├── src/
 │   │   ├── app/
-│   │   │   ├── CartographerApp.tsx     # Root workspace orchestrator
-│   │   │   ├── layout.tsx             # Next.js root layout
-│   │   │   └── page.tsx               # Entry page
 │   │   ├── components/
-│   │   │   ├── AskPanel.tsx           # AI Q&A panel
-│   │   │   ├── CommandPalette.tsx      # Cmd+K command palette
-│   │   │   ├── EmptyWorkspace.tsx      # Landing page / onboarding
-│   │   │   ├── GraphPanel.tsx          # ReactFlow graph canvas
-│   │   │   ├── GraphToolbar.tsx        # Graph controls + filters
-│   │   │   ├── Inspector.tsx           # File detail inspector
-│   │   │   ├── MarkdownView.tsx        # Markdown renderer
-│   │   │   ├── NodeDetailDrawer.tsx    # Slide-over file detail
-│   │   │   ├── RepositoryExplorer.tsx  # File tree + risk hotspots
-│   │   │   ├── RiskBreakdown.tsx       # Risk bar chart
-│   │   │   ├── RiskHotspots.tsx        # High-risk file list
-│   │   │   ├── Toast.tsx              # Notification system
-│   │   │   ├── WorkspaceTopbar.tsx     # Top navigation bar
-│   │   │   └── *.test.tsx             # Component tests (20 files)
 │   │   ├── lib/
-│   │   │   └── api.ts                 # Typed API client + types
 │   │   └── styles/
-│   │       └── app.css                # Global stylesheet
-│   ├── Dockerfile
+│   │
 │   ├── package.json
 │   └── vitest.config.ts
+│
 ├── docs/
-│   └── architecture.md                # Technical architecture document
-├── .github/workflows/
-│   └── ci.yml                         # GitHub Actions CI pipeline
-├── docker-compose.yml                 # Full-stack Docker orchestration
-├── check.sh                           # Local quality gate script
-├── .env.example                       # Environment variable template
+│   └── architecture.md
+│
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+│
+├── docker-compose.yml
+├── check.sh
+├── .env.example
 └── LICENSE
 ```
 
 ---
 
-## License
+# Engineering Principles
 
-See [LICENSE](LICENSE) for details.
+The architecture is built around a few deliberate principles.
+
+### 1. Evidence before generation
+
+The graph and deterministic analysis establish the repository facts before generative reasoning is invoked.
+
+### 2. Structured decisions before free-form prose
+
+Classification, routing, prioritization, and risk decisions are treated as structured problems.
+
+### 3. AI as an augmentation layer
+
+The system remains useful when generative AI is unavailable.
+
+### 4. Incremental work over brute-force recomputation
+
+Unchanged files can reuse indexed state.
+
+### 5. Investigation over dashboarding
+
+The interface is organized around tracing relationships and understanding changes, not merely displaying repository statistics.
+
+### 6. Bounded complexity
+
+Graph responses, source snippets, scan counts, and expensive AI calls are all bounded to keep the system practical.
+
+---
+
+# Scope & Limitations
+
+Cartographer is intentionally a **structural code-intelligence system**, not a full compiler or language-server implementation.
+
+The current analyzers focus on Python, JavaScript, and TypeScript and resolve common repository import patterns.
+
+Likewise, dead-code detection is probabilistic: zero fan-in identifies candidates, but the system does not formally prove that a file is unreachable in every runtime or deployment configuration.
+
+Risk scores are decision-support signals, not guarantees.
+
+The objective is to provide engineers with **useful architectural evidence and investigative context**, not to replace human code review.
+
+---
+
+# Why This Architecture?
+
+The central design decision can be summarized as:
+
+```text
+Static structure
+      +
+Git history
+      +
+Graph relationships
+      +
+Structured AI decisions
+      +
+Semantic retrieval
+      +
+Generative reasoning
+      ↓
+Interactive code intelligence
+```
+
+Each layer contributes something different.
+
+Static analysis provides facts.
+
+Git provides historical context.
+
+Neo4j provides relationships.
+
+Structured AI provides classification and probabilistic decisions.
+
+Vector search provides semantic retrieval.
+
+Generative AI provides explanations.
+
+The interface turns all of that into something an engineer can actually investigate.
+
+---
+
+# Further Documentation
+
+For the deeper implementation architecture, see:
+
+- [`docs/architecture.md`](docs/architecture.md)
+- [`backend/app/indexing/scanner.py`](backend/app/indexing/scanner.py)
+- [`backend/app/services/neo4j_store.py`](backend/app/services/neo4j_store.py)
+- [`backend/app/services/jev_client.py`](backend/app/services/jev_client.py)
+- [`backend/app/services/analysis.py`](backend/app/services/analysis.py)
+
+---
+
+# License
+
+See [`LICENSE`](LICENSE).
