@@ -31,14 +31,40 @@ type Props = {
 
 export default function CartographerApp({ defaultRepoPath }: Props) {
   // Workspace state
-  const [repoPath, setRepoPath] = useState(defaultRepoPath);
-  const [activeRepoPath, setActiveRepoPath] = useState(defaultRepoPath);
+  const [repoPath, setRepoPath] = useState(() => {
+    try {
+      return localStorage.getItem("cartographer_last_repo") || defaultRepoPath;
+    } catch {
+      return defaultRepoPath;
+    }
+  });
+  const [activeRepoPath, setActiveRepoPath] = useState(() => {
+    try {
+      return localStorage.getItem("cartographer_last_repo") || defaultRepoPath;
+    } catch {
+      return defaultRepoPath;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      if (activeRepoPath) {
+        localStorage.setItem("cartographer_last_repo", activeRepoPath);
+      } else {
+        localStorage.removeItem("cartographer_last_repo");
+      }
+    } catch {
+      // localStorage unavailable (SSR or test environment)
+    }
+  }, [activeRepoPath]);
+
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileDetail, setFileDetail] = useState<FileDetail | null>(null);
   const [pathPrefix, setPathPrefix] = useState<string | null>(null);
   const [graphMode, setGraphMode] = useState<"architecture" | "risk" | "recent">("architecture");
   const [impactMode, setImpactMode] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [scanRepoName, setScanRepoName] = useState<string | null>(null);
   
   // Data state
   const [repositories, setRepositories] = useState<RepositoryInfo[]>([]);
@@ -88,7 +114,7 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
       const repoData = await getRepositories();
       setRepositories(repoData.repositories);
       
-      const resolvedScope = repoScope || activeRepoPath || defaultRepoPath || repoData.repositories[0]?.root_path || "";
+      const resolvedScope = repoScope || activeRepoPath || defaultRepoPath;
       if (!resolvedScope) return;
 
       if (resolvedScope !== activeRepoPath) setActiveRepoPath(resolvedScope);
@@ -117,10 +143,14 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
     setStatus("Scanning source, mining Git history, and writing Neo4j graph...");
     try {
       const result = await scanRepo(path, summarize);
+      setStatus(`Indexed ${result.files} files, ${result.symbols} symbols, ${result.imports} edges.`);
+      // Store the repo name from the scan result so the topbar can use it immediately
+      setScanRepoName(result.repository || path.split("/").filter(Boolean).pop() || "Repository");
+      // Fetch all data BEFORE transitioning to workspace view
+      await refresh(result.root_path);
+      // NOW set active path — this triggers the transition from EmptyWorkspace to workspace
       setActiveRepoPath(result.root_path);
       setRepoPath(result.root_path);
-      setStatus(`Indexed ${result.files} files, ${result.symbols} symbols, ${result.imports} edges.`);
-      await refresh(result.root_path);
       addToast("Repository scanned successfully.", "success");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Scan failed";
@@ -173,7 +203,9 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeRepo = repositories.find((r) => r.root_path === activeRepoPath);
-  const showEmptyState = !activeRepo && repositories.length === 0 && !loadingScan;
+  // Show empty state when there's no active repo selected, OR when a scan is in progress
+  // (the EmptyWorkspace component shows its own loading spinner during scans)
+  const showEmptyState = !activeRepoPath || (repositories.length === 0 && !loadingScan);
 
   return (
     <div className="workspace-shell">
@@ -182,13 +214,19 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
           defaultRepoPath={defaultRepoPath}
           onScan={handleScan}
           loading={loadingScan}
+          repositories={repositories}
+          onSelectRepo={handleRepoChange}
         />
       ) : (
         <>
           <WorkspaceTopbar
-            repoName={activeRepo?.name || "Codebase"}
+            repoName={activeRepo?.name || scanRepoName || "Codebase"}
             branch="main" // Can add real branch detection later
             onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+            onHome={() => {
+              setActiveRepoPath("");
+              setRepoPath("");
+            }}
           />
           
           <div className="workspace-main">

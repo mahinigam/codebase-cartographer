@@ -1,15 +1,22 @@
 import React from "react";
+import { Home } from "lucide-react";
 
 type Props = {
   repoName: string;
   branch?: string;
   onOpenCommandPalette: () => void;
+  onHome?: () => void;
 };
 
-export function WorkspaceTopbar({ repoName, branch, onOpenCommandPalette }: Props) {
+export function WorkspaceTopbar({ repoName, branch, onOpenCommandPalette, onHome }: Props) {
   return (
     <header className="workspace-topbar">
       <div className="topbar-left">
+        {onHome && (
+          <button className="home-button" onClick={onHome} aria-label="Home" style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0 8px' }}>
+            <Home size={18} />
+          </button>
+        )}
         <span className="brand">Cartographer</span>
         <span className="divider">/</span>
         <span className="repo-name">{repoName || "No repository selected"}</span>

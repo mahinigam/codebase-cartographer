@@ -1,13 +1,16 @@
 import React, { useState } from "react";
-import { FolderGit2, Map, Scan, Loader2 } from "lucide-react";
+import { FolderGit2, Map, Scan, Loader2, Database } from "lucide-react";
+import { RepositoryInfo } from "../lib/api";
 
 type Props = {
   defaultRepoPath: string;
   onScan: (path: string, summarize: boolean) => void;
   loading: boolean;
+  repositories?: RepositoryInfo[];
+  onSelectRepo?: (path: string) => void;
 };
 
-export function EmptyWorkspace({ defaultRepoPath, onScan, loading }: Props) {
+export function EmptyWorkspace({ defaultRepoPath, onScan, loading, repositories = [], onSelectRepo }: Props) {
   const [path, setPath] = useState(defaultRepoPath || "");
   const [summarize, setSummarize] = useState(true);
 
@@ -70,6 +73,23 @@ export function EmptyWorkspace({ defaultRepoPath, onScan, loading }: Props) {
         <div className="features-list">
           <span>Local-first indexing</span> • <span>dependency graph</span> • <span>risk analysis</span> • <span>AI explanations</span>
         </div>
+
+        {repositories.length > 0 && onSelectRepo && (
+          <div className="recent-repos">
+            <h3>Previously Scanned Repositories</h3>
+            <ul className="repo-list">
+              {repositories.map(repo => (
+                <li key={repo.root_path} className="repo-list-item" onClick={() => onSelectRepo(repo.root_path)}>
+                  <Database size={16} className="repo-icon" />
+                  <div className="repo-info">
+                    <span className="repo-name">{repo.name}</span>
+                    <span className="repo-path">{repo.root_path}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );
