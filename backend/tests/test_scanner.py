@@ -60,6 +60,33 @@ def test_validate_repo_path_rejects_missing_path() -> None:
         validate_repo_path("/definitely/not/a/real/repo")
 
 
+def test_read_source_head_caps_bytes(tmp_path: Path) -> None:
+    from app.indexing.scanner import _read_source_head
+
+    source_file = tmp_path / "big.py"
+    source_file.write_text("a" * 100, encoding="utf-8")
+
+    assert len(_read_source_head(source_file, 10)) == 10
+    assert len(_read_source_head(source_file, 0)) == 100
+
+
+@pytest.mark.asyncio
+async def test_scan_respects_per_file_byte_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "allowed_repo_roots_raw", "")
+    monkeypatch.setattr(settings, "scan_max_file_bytes", 10)
+    (tmp_path / "huge.py").write_text("def run():\n    return 1\n" * 200, encoding="utf-8")
+
+    graph = await scan_repository(str(tmp_path))
+
+    # 10 bytes ("def run():") parse as a truncated file: no symbols survive,
+    # and locals come from the truncated text only.
+    assert len(graph.files) == 1
+    assert graph.files[0].loc == 1  # only the truncated first line survives
+    assert graph.symbols == []  # SyntaxError from truncation yields no symbols
+
+
 @pytest.mark.asyncio
 async def test_scan_repository_scores_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "allowed_repo_roots_raw", "")

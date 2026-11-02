@@ -164,9 +164,9 @@ export function Inspector({ file, onClose, onSelectFile, onTraceImpact, onAskAbo
                 <div style={{ fontSize: '11px', marginTop: '4px' }}>Strategy: {impactData.refactor_safety.recommended_strategy}</div>
               </div>
             )}
-            <div className="impact-explanation" style={{ fontSize: '12px', lineHeight: 1.5 }}>
-              {/* Assuming we might want to just render it as text/markdown */}
-              <div dangerouslySetInnerHTML={{ __html: impactData.explanation.replace(/\n/g, "<br>") }} />
+            <div className="impact-explanation" style={{ fontSize: '12px', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+              {/* Render untrusted LLM output as plain text — never raw HTML. */}
+              {impactData.explanation}
             </div>
           </CollapsibleSection>
         )}

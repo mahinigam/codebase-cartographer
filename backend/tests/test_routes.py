@@ -207,6 +207,8 @@ async def test_scan_summary_exception(monkeypatch, mock_store_fixture):
 
     from app.main import app
     client = TestClient(app)
+    monkeypatch.setattr(settings, "scan_rate_limit_per_minute", 0)
+    routes._rate_windows.clear()
     monkeypatch.setattr("app.api.routes.validate_repo_path", lambda x: "/repo")
     mock_graph = MagicMock()
     mock_graph.name = "repo"
@@ -281,3 +283,36 @@ def test_scan_rejects_repository_cap(monkeypatch, mock_store_fixture):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "store cap reached"
+
+
+def test_token_compare_rejects_wrong_token(monkeypatch):
+    monkeypatch.setattr(settings, "api_token", "abcdefghij")
+
+    with pytest.raises(HTTPException) as exc:
+        routes.require_api_token("Bearer abcdefghik", None)
+
+    assert exc.value.status_code == 401
+
+
+def test_query_and_impact_are_rate_limited(monkeypatch, mock_store_fixture):
+    monkeypatch.setattr(settings, "scan_rate_limit_per_minute", 1)
+    routes._rate_windows.clear()
+    try:
+        with patch(
+            "app.api.routes.answer_architecture_question", new_callable=AsyncMock
+        ) as mock_answer:
+            mock_answer.return_value = {"answer": "ok", "relevant_files": []}
+            ok = client.post("/api/query", json={"question": "what does what?"})
+            assert ok.status_code == 200
+            limited = client.post("/api/query", json={"question": "and again?"})
+            assert limited.status_code == 429
+
+        with patch(
+            "app.api.routes.explain_impact", new_callable=AsyncMock
+        ) as mock_impact:
+            mock_impact.return_value = {"explanation": "ok"}
+            impact_limited = client.post("/api/impact", json={"path": "a.py"})
+            # /impact shares the same per-client admission window.
+            assert impact_limited.status_code == 429
+    finally:
+        routes._rate_windows.clear()

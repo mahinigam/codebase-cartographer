@@ -1,4 +1,5 @@
 import logging
+import secrets
 from collections import defaultdict, deque
 from time import monotonic
 from typing import Annotated
@@ -39,7 +40,9 @@ def require_api_token(
     bearer = ""
     if authorization and authorization.lower().startswith("bearer "):
         bearer = authorization[7:].strip()
-    if x_api_key != settings.api_token and bearer != settings.api_token:
+    key_ok = secrets.compare_digest(x_api_key or "", settings.api_token)
+    bearer_ok = secrets.compare_digest(bearer or "", settings.api_token)
+    if not key_ok and not bearer_ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Valid API token required.",
@@ -180,13 +183,15 @@ def search(q: str, limit: int = 8, repo_path: str | None = None) -> dict:
         return {"results": store.search_files(q, limit=limit, repo_path=repo_path)}
 
 @router.post("/query")
-async def query(request: QueryRequest) -> dict:
+async def query(request: QueryRequest, http_request: Request) -> dict:
+    _enforce_rate_limit(http_request)
     with neo4j_store() as store:
         return await answer_architecture_question(store, request.question, request.repo_path)
 
 
 @router.post("/impact")
-async def impact(request: ImpactRequest) -> dict:
+async def impact(request: ImpactRequest, http_request: Request) -> dict:
+    _enforce_rate_limit(http_request)
     with neo4j_store() as store:
         return await explain_impact(store, request.path, request.depth, request.repo_path)
 

@@ -12,6 +12,27 @@ def jev_client():
     return client
 
 
+def test_enabled_requires_api_key(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "typesafe_api_key", None)
+    client = JevClient()
+    assert client.enabled is False
+
+
+def test_enabled_respects_master_kill_switch(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "typesafe_api_key", "key")
+    monkeypatch.setattr(settings, "jev_enabled", False)
+    client = JevClient()
+    assert client.enabled is False
+
+    monkeypatch.setattr(settings, "jev_enabled", True)
+    client = JevClient()
+    assert client.enabled is True
+
+
 @pytest.mark.asyncio
 async def test_jev_decide_success(jev_client):
     with patch("app.services.jev_client.AsyncTypeSafeClient") as MockClient:

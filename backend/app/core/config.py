@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     summary_max_chars: int = 4000
     scan_max_files: int = 10000
     scan_max_repositories: int = 50  # ≤ 0 disables the aggregate store cap
+    scan_max_file_bytes: int = 2_000_000  # ≤ 0 disables the per-file read cap
     scan_rate_limit_per_minute: int = 6
     api_token: str | None = Field(default=None, repr=False)
 

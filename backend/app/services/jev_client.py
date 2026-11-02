@@ -59,7 +59,7 @@ class JevClient:
         self.api_key = settings.typesafe_api_key
         self.base_url = settings.jev_base_url
         self.model = settings.jev_model
-        self.enabled = bool(self.api_key)
+        self.enabled = bool(self.api_key) and settings.jev_enabled
 
     async def decide(
         self,

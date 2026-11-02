@@ -57,7 +57,7 @@ async def scan_repository(
             _append_cached_file(graph, cached, churn.get(relative, {}), stat)
             continue
 
-        source = path.read_text(encoding="utf-8", errors="ignore")
+        source = _read_source_head(path, settings.scan_max_file_bytes)
         content_hash = _content_hash(source)
         if cached and cached.file.content_hash == content_hash:
             _append_cached_file(graph, cached, churn.get(relative, {}), stat, content_hash)
@@ -122,6 +122,15 @@ def _same_stat_fingerprint(file: CodeFile, stat: os.stat_result) -> bool:
         and file.size_bytes == stat.st_size
         and file.mtime_ns == stat.st_mtime_ns
     )
+
+
+def _read_source_head(path: Path, max_bytes: int) -> str:
+    """Read a file, capped to ``max_bytes`` so one file can't balloon memory."""
+    if max_bytes <= 0:
+        return path.read_text(encoding="utf-8", errors="ignore")
+    with path.open("rb") as handle:
+        data = handle.read(max_bytes)
+    return data.decode("utf-8", errors="ignore")
 
 
 def _content_hash(source: str) -> str:
