@@ -22,7 +22,8 @@ class JevDecision:
         self.probability = raw.get("noul", raw.get("probability"))  # For Noul
         self.value = raw.get("score", raw.get("value"))              # For Score
         self.confidence = raw.get("confidence", 0.0)
-        self.distribution = raw.get("probabilities", raw.get("distribution", {}))  # Full prob per option
+        # Full probability distribution per option
+        self.distribution = raw.get("probabilities", raw.get("distribution", {}))
 
     def __repr__(self) -> str:
         parts = []
@@ -64,7 +65,7 @@ class JevClient:
     async def decide(
         self,
         state: dict | str,
-        questions: dict[str, dict],
+        questions: dict[str, Any],
         timeout: float = 10.0,
     ) -> JevResult | None:
         """
@@ -73,7 +74,8 @@ class JevClient:
         Args:
             state: The context Jev evaluates (can be dict or text).
             questions: Map of question_name -> question_spec.
-                       Each spec has "type" (choice/noul/score) and type-specific fields.
+                       Each spec has "type" (choice/noul/score) and type-specific fields,
+                       either as a raw spec dict or as a Choice/Noul/Score model.
             timeout: HTTP timeout in seconds.
 
         Returns:
@@ -86,10 +88,11 @@ class JevClient:
 
         try:
             ts_client = AsyncTypeSafeClient(api_key=self.api_key, base_url=self.base_url)
-            # Remove any raw types if they were somehow passed as dicts
             response = await ts_client.system_one(
                 state=state,
-                questions=questions,
+                # The SDK's typing expects its own spec models; raw spec dicts and
+                # JevClient's model instances are both accepted at runtime.
+                questions=questions,  # type: ignore[arg-type]
                 timeout=timeout
             )
         except Exception as exc:
@@ -229,10 +232,13 @@ class JevClient:
                     "Evaluate how risky it would be to modify, refactor, or delete this file. "
                     "Consider: (1) Is this file a critical chokepoint in the dependency graph? "
                     "(2) Does it implement security, authentication, or data-integrity logic? "
-                    "(3) Is it a shared contract or schema that many other files depend on implicitly? "
+                    "(3) Is it a shared contract or schema that many other files "
+                    "depend on implicitly? "
                     "(4) Does it manage state that is hard to reason about? "
-                    "(5) Is the complexity concentrated in fragile patterns (deep nesting, global mutation)? "
-                    "(6) Does the churn suggest instability or active development that compounds risk? "
+                    "(5) Is the complexity concentrated in fragile patterns "
+                    "(deep nesting, global mutation)? "
+                    "(6) Does the churn suggest instability or active development that "
+                    "compounds risk? "
                     "A score of 1 means trivially safe to touch; 10 means extremely dangerous."
                 ),
                 criteria=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
@@ -349,8 +355,9 @@ class JevClient:
             ),
             "needs_ai_generation": Noul(
                 instructions= (
-                    "Does this question require a generative AI (LLM) to produce a natural-language "
-                    "explanation, or can it be fully answered with structured graph data alone "
+                    "Does this question require a generative AI (LLM) to produce a "
+                    "natural-language explanation, or can it be fully answered with "
+                    "structured graph data alone "
                     "(file lists, dependency trees, risk scores, symbol tables)?"
                 ),
             ),
@@ -383,10 +390,11 @@ class JevClient:
             "cohesion": Score(
                 instructions= (
                     "Rate the cohesion of this module/directory cluster. "
-                    "High cohesion means files within the cluster are strongly related to each other "
-                    "and share a single well-defined responsibility. Low cohesion means the cluster "
-                    "is a grab-bag of unrelated files. Consider the file names, the ratio of "
-                    "internal-to-external edges, and the cluster name. "
+                    "High cohesion means files within the cluster are strongly related "
+                    "to each other and share a single well-defined responsibility. "
+                    "Low cohesion means the cluster is a grab-bag of unrelated files. "
+                    "Consider the file names, the ratio of internal-to-external edges, "
+                    "and the cluster name. "
                     "1 = completely incoherent, 5 = perfectly cohesive."
                 ),
                 criteria=["1", "2", "3", "4", "5"],
@@ -402,12 +410,14 @@ class JevClient:
             ),
             "extraction_readiness": Choice(
                 instructions= (
-                    "Could this module be safely extracted into a standalone package or microservice?"
+                    "Could this module be safely extracted into a standalone package "
+                    "or microservice?"
                 ),
                 criteria={
                     "ready-to-extract": "ready-to-extract",
                     "extractable-with-minor-refactoring": "extractable-with-minor-refactoring",
-                    "extractable-with-significant-refactoring": "extractable-with-significant-refactoring",
+                    "extractable-with-significant-refactoring":
+                        "extractable-with-significant-refactoring",
                     "not-extractable-too-coupled": "not-extractable-too-coupled",
                     "too-small-to-warrant-extraction": "too-small-to-warrant-extraction",
                     "already-well-bounded": "already-well-bounded",

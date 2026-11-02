@@ -23,7 +23,8 @@ def file_churn(root: Path) -> dict[str, dict[str, str | int]]:
                 logger.debug(f"Skipping unreadable git commit while mining churn: {exc}")
                 continue
             for file_path in changed_files:
-                entry = churn.setdefault(file_path, {"count": 0, "last_modified": timestamp})
+                key = str(file_path)
+                entry = churn.setdefault(key, {"count": 0, "last_modified": timestamp})
                 entry["count"] = int(entry["count"]) + 1
                 if str(entry["last_modified"]) < timestamp:
                     entry["last_modified"] = timestamp

@@ -88,7 +88,9 @@ async def test_scan_respects_per_file_byte_cap(
 
 
 @pytest.mark.asyncio
-async def test_scan_repository_scores_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_scan_repository_scores_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(settings, "allowed_repo_roots_raw", "")
     module = tmp_path / "service.py"
     module.write_text(
@@ -193,7 +195,9 @@ async def test_scan_repository_resolves_js_index_barrel_imports(
 
 
 @pytest.mark.asyncio
-async def test_scan_repository_records_root_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_scan_repository_records_root_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(settings, "allowed_repo_roots_raw", "")
     (tmp_path / "main.py").write_text("print('ok')\n", encoding="utf-8")
 

@@ -73,6 +73,7 @@ async def scan_repository(
             symbols, imports, complexity = [], [], 0
 
         history = churn.get(relative, {})
+        last_modified = history.get("last_modified")
         graph.files.append(
             CodeFile(
                 path=relative,
@@ -82,7 +83,7 @@ async def scan_repository(
                 mtime_ns=stat.st_mtime_ns,
                 content_hash=content_hash,
                 churn_count=int(history.get("count", 0)),
-                last_modified=history.get("last_modified"),
+                last_modified=last_modified if isinstance(last_modified, str) else None,
                 complexity=complexity,
             )
         )
@@ -346,13 +347,13 @@ async def _enhance_risk_with_jev(graph: RepositoryGraph) -> None:
         if edge.target_path:
             fan_in_map[edge.target_path] = fan_in_map.get(edge.target_path, 0) + 1
 
-    symbols_by_file = {}
+    symbols_by_file: dict[str, list[str]] = {}
     for sym in graph.symbols:
         symbols_by_file.setdefault(sym.file_path, []).append(sym.name)
 
-    imports_by_file = {}
-    dependents_by_file = {}
-    ext_deps_by_file = {}
+    imports_by_file: dict[str, list[str]] = {}
+    dependents_by_file: dict[str, list[str]] = {}
+    ext_deps_by_file: dict[str, list[str]] = {}
     for edge in graph.imports:
         if edge.target_path:
             imports_by_file.setdefault(edge.source_path, []).append(edge.target_path)
@@ -399,11 +400,11 @@ async def _detect_tests_with_jev(graph: RepositoryGraph, root: Path) -> None:
         return
 
     semaphore = asyncio.Semaphore(settings.jev_batch_concurrency)
-    symbols_by_file = {}
+    symbols_by_file: dict[str, list[str]] = {}
     for sym in graph.symbols:
         symbols_by_file.setdefault(sym.file_path, []).append(sym.name)
-    imports_by_file = {}
-    ext_deps_by_file = {}
+    imports_by_file: dict[str, list[str]] = {}
+    ext_deps_by_file: dict[str, list[str]] = {}
     for edge in graph.imports:
         if edge.target_path:
             imports_by_file.setdefault(edge.source_path, []).append(edge.target_path)
@@ -440,11 +441,11 @@ async def _detect_frameworks_with_jev(graph: RepositoryGraph, root: Path) -> Non
         return
 
     semaphore = asyncio.Semaphore(settings.jev_batch_concurrency)
-    symbols_by_file = {}
+    symbols_by_file: dict[str, list[str]] = {}
     for sym in graph.symbols:
         symbols_by_file.setdefault(sym.file_path, []).append(sym.name)
-    imports_by_file = {}
-    ext_deps_by_file = {}
+    imports_by_file: dict[str, list[str]] = {}
+    ext_deps_by_file: dict[str, list[str]] = {}
     for edge in graph.imports:
         if edge.target_path:
             imports_by_file.setdefault(edge.source_path, []).append(edge.target_path)
@@ -495,10 +496,10 @@ async def _detect_dead_code_with_jev(graph: RepositoryGraph, root: Path) -> None
     for edge in graph.imports:
         fan_out_map[edge.source_path] = fan_out_map.get(edge.source_path, 0) + 1
 
-    symbols_by_file = {}
+    symbols_by_file: dict[str, list[str]] = {}
     for sym in graph.symbols:
         symbols_by_file.setdefault(sym.file_path, []).append(sym.name)
-    ext_deps_by_file = {}
+    ext_deps_by_file: dict[str, list[str]] = {}
     for edge in graph.imports:
         if not edge.target_path:
             ext_deps_by_file.setdefault(edge.source_path, []).append(edge.target)

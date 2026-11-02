@@ -205,10 +205,22 @@ async def explain_impact(
         strat_dec = safety_result.get("recommended_strategy")
         blast_dec = safety_result.get("estimated_blast_radius")
         impact["refactor_safety"] = {
-            "safe_to_refactor": safe_dec.probability > 0.6 if safe_dec else None,
-            "safe_probability": round(safe_dec.probability, 3) if safe_dec else None,
+            "safe_to_refactor": (
+                safe_dec.probability > 0.6
+                if safe_dec and safe_dec.probability is not None
+                else None
+            ),
+            "safe_probability": (
+                round(safe_dec.probability, 3)
+                if safe_dec and safe_dec.probability is not None
+                else None
+            ),
             "recommended_strategy": strat_dec.answer if strat_dec else None,
-            "blast_radius": round(blast_dec.value, 1) if blast_dec else None,
+            "blast_radius": (
+                round(blast_dec.value, 1)
+                if blast_dec and blast_dec.value is not None
+                else None
+            ),
         }
 
     # Existing Gemini narrative
@@ -272,8 +284,12 @@ async def generate_summaries_for_repo(
                 if result:
                     needs = result.get("needs_summary")
                     priority = result.get("summary_priority")
-                    should_summarize = needs.probability > 0.5 if needs else True
-                    prio_val = priority.value if priority else 5.0
+                    should_summarize = True
+                    if needs and needs.probability is not None:
+                        should_summarize = needs.probability > 0.5
+                    prio_val = 5.0
+                    if priority and priority.value is not None:
+                        prio_val = float(priority.value)
                     return (path, prio_val, should_summarize)
                 return (path, 5.0, True)
 

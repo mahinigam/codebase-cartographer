@@ -2,6 +2,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.models.graph import CodeFile, CodeSymbol, ImportEdge, RepositoryGraph
+from app.services.neo4j_store import (
+    GRAPH_MAX_EDGE_LIMIT,
+    GRAPH_MAX_NODE_LIMIT,
+    WRITE_BATCH_SIZE,
+    Neo4jStore,
+    _batched,
+    _search_words,
+    clamp_graph_limits,
+)
+
 
 class MockResult:
     def __init__(self, data):
@@ -17,22 +28,10 @@ class MockResult:
 @pytest.fixture
 def store():
     with patch("app.services.neo4j_store.GraphDatabase"):
-        from app.services.neo4j_store import Neo4jStore
         s = Neo4jStore()
         # Ensure driver is properly mocked
         s.driver = MagicMock()
         return s
-
-from app.models.graph import CodeFile, CodeSymbol, ImportEdge, RepositoryGraph
-from app.services.neo4j_store import (
-    GRAPH_MAX_EDGE_LIMIT,
-    GRAPH_MAX_NODE_LIMIT,
-    WRITE_BATCH_SIZE,
-    Neo4jStore,
-    _batched,
-    _search_words,
-    clamp_graph_limits,
-)
 
 
 class RecordingTx:
@@ -116,8 +115,10 @@ def test_write_graph_uses_unwind_batches_and_stale_file_cleanup() -> None:
 
 def test_neo4j_semantic_search(store):
     mock_session = store.driver.session.return_value.__enter__.return_value
-    mock_session.run.return_value = MockResult([{"path": "a.py", "score": 0.9, "summary": "test summary"}])
-    
+    mock_session.run.return_value = MockResult([
+        {"path": "a.py", "score": 0.9, "summary": "test summary"}
+    ])
+
     results = store.semantic_search([0.1, 0.2, 0.3], limit=1, repo_path="repo1")
     
     assert len(results) == 1
@@ -223,7 +224,8 @@ def test_neo4j_file_detail_and_paths(store):
             }])
         if "f.language AS language" in query:
             return MockResult([{"path": "a.py", "language": "python", "loc": 10}])
-        if "ORDER BY path ASC" in query or "ORDER BY f.path" in query or "RETURN f.path AS path" in query:
+        if "ORDER BY path ASC" in query or "ORDER BY f.path" in query \
+                or "RETURN f.path AS path" in query:
             return MockResult([{"path": "a.py"}, {"path": "b.py"}])
         return MockResult([{"path": "a.py", "language": "python", "loc": 10}])
     
@@ -244,7 +246,10 @@ def test_neo4j_file_detail_and_paths(store):
 
 def test_neo4j_get_existing_summary(store):
     mock_session = store.driver.session.return_value.__enter__.return_value
-    mock_session.run.return_value = MockResult([{"text": "old summary", "model": "old-model", "provider": "old-provider", "file_path": "a.py", "updated_at": "now"}])
+    mock_session.run.return_value = MockResult([
+        {"text": "old summary", "model": "old-model", "provider": "old-provider",
+         "file_path": "a.py", "updated_at": "now"}
+    ])
     
     summary = store.get_existing_summary("repo1", "a.py")
     
@@ -289,8 +294,9 @@ def test_upsert_repository_graph():
         mock_session = MagicMock()
         store.driver.session.return_value.__enter__.return_value = mock_session
         store.ensure_schema = MagicMock()
-        graph = RepositoryGraph(name="test", root_path="/test", files=[], internal_edges=[], external_edges=[])
-        graph = RepositoryGraph(name="test", root_path="/test", files=[], internal_edges=[], external_edges=[])
+        graph = RepositoryGraph(
+            name="test", root_path="/test", files=[], internal_edges=[], external_edges=[]
+        )
         store.upsert_repository_graph(graph)
         store.ensure_schema.assert_called_once()
         mock_session.execute_write.assert_called_once()
@@ -304,8 +310,10 @@ def test_scan_cache():
         
         # Mock file, symbol, internal_imports, external_imports
         mock_session.run.side_effect = [
-            [{"path": "a.py", "language": "python", "loc": 10, "complexity": 5, "load_bearing_score": 2}],
-            [{"file_path": "a.py", "id": "foo", "name": "foo", "kind": "func", "start_line": 1, "end_line": 5}],
+            [{"path": "a.py", "language": "python", "loc": 10,
+              "complexity": 5, "load_bearing_score": 2}],
+            [{"file_path": "a.py", "id": "foo", "name": "foo", "kind": "func",
+              "start_line": 1, "end_line": 5}],
             [{"source_path": "a.py", "target": "b", "target_path": "b.py", "line_number": 1}],
             [{"source_path": "a.py", "target": "req", "target_path": None, "line_number": None}]
         ]
@@ -342,12 +350,17 @@ async def test_neo4j_graph_slice(store):
     session = store.driver.session.return_value.__enter__.return_value
     def mock_run(query, **kwargs):
         if "cluster AS name" in query:
-            return MockResult([{"name": "a", "internal_edges": 1, "external_in": 1, "external_out": 1}])
+            return MockResult([{"name": "a", "internal_edges": 1,
+                                "external_in": 1, "external_out": 1}])
         if "f.key AS id" in query:
             return MockResult([{"id": "a.py", "group": "File", "label": "a.py", "props": {}}])
         if "id(source) AS source" in query:
             return MockResult([{"source": "a.py", "target": "b.py", "type": "IMPORTS"}])
-        return MockResult([{"total": 1, "name": "a", "id": "a.py", "internal_edges": 1, "external_in": 1, "external_out": 1, "files": 1, "avg_score": 1, "max_score": 1}])
+        return MockResult([
+            {"total": 1, "name": "a", "id": "a.py", "internal_edges": 1,
+             "external_in": 1, "external_out": 1, "files": 1, "avg_score": 1,
+             "max_score": 1}
+        ])
     session.run.side_effect = mock_run
     res = await store.graph_slice(repo_path="/repo")
     assert isinstance(res, dict)
@@ -367,29 +380,11 @@ def test_neo4j_store_methods(store):
 
 def test_neo4j_clusters(store):
     session = store.driver.session.return_value.__enter__.return_value
-    session.run.return_value = [{"name": "a", "source_module": "a", "target_module": "b", "weight": 1}]
+    session.run.return_value = [
+        {"name": "a", "source_module": "a", "target_module": "b", "weight": 1}
+    ]
     res = store.cluster_edge_counts(session, "/repo")
     assert len(res) == 1
-
-
-def test_scan_cache(store):
-    session = store.driver.session.return_value.__enter__.return_value
-    def mock_run(query, **kwargs):
-        if "f.path AS path" in query:
-            return [{"path": "a.py", "language": "python", "loc": 10}]
-        if "s.id AS id" in query:
-            return [{"id": "sym", "file_path": "a.py", "name": "a", "kind": "func", "start_line": 1, "end_line": 2, "complexity": 1}]
-        if "i.source_path" in query:
-            return [{"source_path": "a.py", "target": "b", "target_path": None, "line_number": None}]
-        return []
-    session.run.side_effect = mock_run
-    cache = store.scan_cache("/repo")
-    assert "a.py" in cache
-
-
-def test_clamp_graph_limits():
-    n, l = clamp_graph_limits(1, 2)
-    assert n == 1
 
 
 def test_search_words():

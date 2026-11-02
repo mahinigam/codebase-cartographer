@@ -2,20 +2,20 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services.jev_client import JevDecision, JevResult
-
-
-@pytest.fixture
-def mock_store():
-    return MagicMock()
-
 from app.services import analysis
 from app.services.analysis import (
     answer_architecture_question,
     explain_impact,
     generate_summaries_for_repo,
 )
+from app.services.jev_client import JevDecision, JevResult
 from app.services.neo4j_store import _search_words
+
+
+@pytest.fixture
+def mock_store():
+    return MagicMock()
+
 
 
 def test_search_words_keeps_architectural_signal() -> None:
@@ -93,7 +93,6 @@ async def test_generate_summaries_skips_gemini_if_jev_triage_fails(monkeypatch) 
     class FakeJev:
         enabled = True
         async def triage_for_summary(self, *args, **kwargs):
-            from app.services.jev_client import JevDecision, JevResult
             return JevResult({
                 "needs_summary": JevDecision({"noul": 0.1}),  # < 0.5 means skip
                 "summary_priority": JevDecision({"score": 1})
@@ -111,31 +110,6 @@ async def test_generate_summaries_skips_gemini_if_jev_triage_fails(monkeypatch) 
     assert result["requested"] == 0
     assert result["triaged_out"] == 1
     assert result["created"] == 0
-
-
-@pytest.mark.asyncio
-async def test_explain_impact(mock_store, monkeypatch):
-    class FakeJev:
-        async def evaluate_refactor_safety(self, *a, **k):
-            return JevResult({
-                "safe_to_refactor": JevDecision({"noul": 0.9}),
-                "recommended_strategy": JevDecision({"choice": "rewrite"}),
-                "estimated_blast_radius": JevDecision({"score": 5})
-            })
-
-    class FakeLLM:
-        async def complete(self, *a, **k):
-            return "Test explanation"
-
-    monkeypatch.setattr(analysis, "jev_client", FakeJev())
-    monkeypatch.setattr(analysis, "llm_client", FakeLLM())
-
-    result = await analysis.explain_impact(mock_store, "a.py", 2)
-    assert result["refactor_safety"]["safe_to_refactor"] is True
-    assert result["refactor_safety"]["recommended_strategy"] == "rewrite"
-    assert result["explanation"] == "Test explanation"
-
-
 
 
 @pytest.mark.asyncio
@@ -160,6 +134,7 @@ async def test_explain_impact(monkeypatch):
 
     res = await explain_impact(mock_store, "a.py", 3, "/repo")
     assert res["refactor_safety"]["safe_to_refactor"] is True
+    assert res["refactor_safety"]["recommended_strategy"] == "Strategy"
     assert res["explanation"] == "impact explanation"
 
 
@@ -258,7 +233,11 @@ async def test_answer_architecture_question(monkeypatch):
 
 
 def test_format_impact():
-    impact = {"target": "a.py", "direct_dependents": ["b.py"], "transitive_dependents": [{"path": "c.py", "distance": 2}]}
+    impact = {
+        "target": "a.py",
+        "direct_dependents": ["b.py"],
+        "transitive_dependents": [{"path": "c.py", "distance": 2}],
+    }
     res = analysis._format_impact_as_markdown(impact)
     assert "a.py" in res
     assert "b.py" in res
@@ -279,7 +258,9 @@ def test_asks_about_risk():
 
 
 def test_load_bearing_matches(mock_store):
-    mock_store.top_load_bearing_files = MagicMock(return_value=[{"path": "a", "language": "python", "load_bearing_score": 10}])
+    mock_store.top_load_bearing_files = MagicMock(return_value=[
+        {"path": "a", "language": "python", "load_bearing_score": 10}
+    ])
     assert len(analysis._load_bearing_matches(mock_store, "/repo")) == 1
 
 
@@ -290,7 +271,11 @@ def test_compute_fan_in(mock_store):
 
 
 def test_evidence_summary():
-    assert "a.py" in analysis._evidence_summary("q", [{"path": "a.py", "summary": "s", "symbols": [], "language": "python", "load_bearing_score": 10, "imports": [], "dependents": [], "external_deps": []}])
+    mock_match = {
+        "path": "a.py", "summary": "s", "symbols": [], "language": "python",
+        "load_bearing_score": 10, "imports": [], "dependents": [], "external_deps": [],
+    }
+    assert "a.py" in analysis._evidence_summary("q", [mock_match])
 
 @pytest.mark.asyncio
 async def test_summarize_file(monkeypatch, tmp_path):

@@ -1,4 +1,4 @@
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 
 from neo4j import GraphDatabase
@@ -27,7 +27,8 @@ class Neo4jStore:
 
     def ping(self) -> bool:
         with self.driver.session() as session:
-            return bool(session.run("RETURN 1 AS ok").single()["ok"])
+            record = session.run("RETURN 1 AS ok").single()
+            return bool(record and record["ok"])
 
     def ensure_schema(self) -> None:
         vector_dimensions = int(settings.embedding_dimensions)
@@ -370,9 +371,9 @@ class Neo4jStore:
                         coh = result.get("cohesion")
                         coup = result.get("coupling")
                         ext = result.get("extraction_readiness")
-                        if coh:
+                        if coh and coh.value is not None:
                             cluster["cohesion"] = round(coh.value, 2)
-                        if coup:
+                        if coup and coup.value is not None:
                             cluster["coupling"] = round(coup.value, 2)
                         if ext:
                             cluster["extraction_readiness"] = ext.answer
@@ -422,7 +423,8 @@ class Neo4jStore:
             OPTIONAL MATCH (a)-[:IMPORTS]->(b:File)
             WITH cluster, keys, fk, b.key AS bk,
                  CASE WHEN b.key IN keys THEN 1 ELSE 0 END AS is_internal,
-                 CASE WHEN b.key IS NOT NULL AND NOT b.key IN keys THEN 1 ELSE 0 END AS is_external_out
+                 CASE WHEN b.key IS NOT NULL AND NOT b.key IN keys
+                      THEN 1 ELSE 0 END AS is_external_out
             WITH cluster, keys,
                  sum(is_internal) AS internal_edges,
                  sum(is_external_out) AS external_out
@@ -451,7 +453,8 @@ class Neo4jStore:
                        coalesce(f.complexity, 0) AS complexity,
                        coalesce(f.load_bearing_score, 0) AS load_bearing_score,
                        f.architectural_role AS architectural_role,
-                       coalesce(f.architectural_role_confidence, 0.0) AS architectural_role_confidence,
+                       coalesce(f.architectural_role_confidence, 0.0) AS
+                           architectural_role_confidence,
                        coalesce(f.is_test_file, false) AS is_test_file,
                        coalesce(f.is_test_probability, 0.0) AS is_test_probability,
                        f.test_category AS test_category,
@@ -902,7 +905,7 @@ def _search_words(query: str) -> list[str]:
 
 
 @contextmanager
-def neo4j_store() -> Iterable[Neo4jStore]:
+def neo4j_store() -> Iterator[Neo4jStore]:
     store = Neo4jStore()
     try:
         yield store

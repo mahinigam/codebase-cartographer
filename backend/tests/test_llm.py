@@ -61,7 +61,9 @@ async def test_llm_complete_gemini_rate_limit_retry(llm_client, monkeypatch):
 @pytest.mark.asyncio
 async def test_llm_complete_fallback_to_ollama(llm_client, httpx_mock):
     # Gemini fails with non-retryable error
-    llm_client.gemini_client.aio.models.generate_content.side_effect = errors.APIError("500 Internal Error", {}, 500)
+    llm_client.gemini_client.aio.models.generate_content.side_effect = errors.APIError(
+        "500 Internal Error", {}, 500
+    )
     
     httpx_mock.add_response(
         url=f"{settings.ollama_base_url}/api/generate",

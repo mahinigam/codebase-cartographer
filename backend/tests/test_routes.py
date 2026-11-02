@@ -100,7 +100,9 @@ def test_get_graph(mock_store_fixture):
 
     response = client.get("/api/graph?repo_path=/repo&limit=5&edge_limit=10")
     assert response.status_code == 200
-    mock_store_fixture.graph_slice.assert_called_with(limit=5, edge_limit=10, repo_path="/repo", path_prefix=None)
+    mock_store_fixture.graph_slice.assert_called_with(
+        limit=5, edge_limit=10, repo_path="/repo", path_prefix=None
+    )
 
 def test_search(mock_store_fixture):
     mock_store_fixture.search_files.return_value = [{"path": "a.py", "score": 1.0}]
@@ -158,7 +160,9 @@ def test_scan(mock_scan, mock_validate, mock_store_fixture):
     
     mock_store_fixture.overview.return_value = {"file_count": 2}
     
-    response = client.post("/api/scan", json={"path": "/repo", "summarize": False, "incremental": False})
+    response = client.post(
+        "/api/scan", json={"path": "/repo", "summarize": False, "incremental": False}
+    )
     assert response.status_code == 200
     assert response.json() == {
         "repository": "test_repo",

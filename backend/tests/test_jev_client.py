@@ -230,7 +230,9 @@ async def test_jev_bond_should_resummarize(jev_client):
             "change_significance": JevDecision({"score": 6})
         })
         
-        result = await jev_client.should_resummarize("app.py", "python", 10, 50, 1, 5, "a", "b", "sum")
+        result = await jev_client.should_resummarize(
+            "app.py", "python", 10, 50, 1, 5, "a", "b", "sum"
+        )
         assert result.needs_resummarize.probability == 0.8
 
 
