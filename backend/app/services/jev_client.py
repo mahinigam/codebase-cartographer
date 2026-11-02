@@ -61,6 +61,32 @@ class JevClient:
         self.base_url = settings.jev_base_url
         self.model = settings.jev_model
         self.enabled = bool(self.api_key) and settings.jev_enabled
+        # Per fan-out call budget (see jev_max_calls_per_scan). Reset at the
+        # start of every scan / summary run via reset_call_budget().
+        self.calls_made = 0
+        self._budget_logged = False
+
+    def reset_call_budget(self) -> None:
+        """Start a fresh per-scan Jev call budget window."""
+        self.calls_made = 0
+        self._budget_logged = False
+
+    def _budget_available(self) -> bool:
+        """Enforce settings.jev_max_calls_per_scan; <= 0 disables the cap."""
+        limit = settings.jev_max_calls_per_scan
+        if limit <= 0:
+            return True
+        if self.calls_made >= limit:
+            if not self._budget_logged:
+                logger.info(
+                    "Jev call budget (%d per scan) exhausted; remaining "
+                    "decisions fall back to deterministic scoring.",
+                    limit,
+                )
+                self._budget_logged = True
+            return False
+        self.calls_made += 1
+        return True
 
     async def decide(
         self,
@@ -83,8 +109,8 @@ class JevClient:
         """
         if not self.enabled:
             return None
-
-
+        if not self._budget_available():
+            return None
 
         try:
             ts_client = AsyncTypeSafeClient(api_key=self.api_key, base_url=self.base_url)

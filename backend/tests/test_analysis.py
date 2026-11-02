@@ -92,6 +92,10 @@ async def test_generate_summaries_skips_gemini_if_jev_triage_fails(monkeypatch) 
             
     class FakeJev:
         enabled = True
+
+        def reset_call_budget(self):
+            pass
+
         async def triage_for_summary(self, *args, **kwargs):
             return JevResult({
                 "needs_summary": JevDecision({"noul": 0.1}),  # < 0.5 means skip

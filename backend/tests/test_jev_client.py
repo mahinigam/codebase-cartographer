@@ -246,3 +246,96 @@ async def test_jev_bond_detect_dead_code(jev_client):
         
         result = await jev_client.detect_dead_code("old.py", "python", 10, 0, 0, 0, None, [], [])
         assert result.is_dead_code.probability == 0.95
+
+
+def test_call_budget_blocks_after_limit(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "jev_max_calls_per_scan", 2)
+    client = JevClient()
+    client.reset_call_budget()
+
+    assert client._budget_available() is True
+    assert client.calls_made == 1
+    assert client._budget_available() is True
+    assert client.calls_made == 2
+    assert client._budget_available() is False  # exhausted
+    assert client.calls_made == 2  # no further increments
+
+    client.reset_call_budget()
+    assert client.calls_made == 0
+    assert client._budget_available() is True
+
+
+def test_call_budget_disabled_when_zero(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "jev_max_calls_per_scan", 0)
+    client = JevClient()
+
+    for _ in range(10):
+        assert client._budget_available() is True
+    assert client.calls_made == 0  # disabled -> no accounting
+
+
+@pytest.mark.asyncio
+async def test_decide_short_circuits_when_budget_exhausted(monkeypatch):
+    from unittest.mock import MagicMock, patch
+
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "jev_max_calls_per_scan", 1)
+    client = JevClient()
+    client.enabled = True
+    client.reset_call_budget()
+
+    mock_response = MagicMock()
+    mock_answer = MagicMock()
+    mock_answer.model_dump.return_value = {"choice": "core-business-logic"}
+    mock_response.answers = {"architectural_role": mock_answer}
+
+    with patch(
+        "app.services.jev_client.AsyncTypeSafeClient"
+    ) as MockClient:
+        MockClient.return_value.system_one = AsyncMock(return_value=mock_response)
+
+        first = await client.decide({"f": "a.py"}, {"architectural_role": {}})
+        second = await client.decide({"f": "b.py"}, {"architectural_role": {}})
+
+    assert first is not None
+    assert first.architectural_role.answer == "core-business-logic"
+    assert second is None  # budget exhausted: skips the HTTP call entirely
+    assert MockClient.return_value.system_one.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_scan_respects_call_budget(tmp_path, monkeypatch):
+    """A bounded budget must not break the scan — remaining files stay deterministic."""
+
+    from app.core.config import settings
+    from app.indexing.scanner import scan_repository
+    from app.services.jev_client import jev_client
+
+    monkeypatch.setattr(settings, "allowed_repo_roots_raw", "")
+    monkeypatch.setattr(settings, "jev_max_calls_per_scan", 1)
+    monkeypatch.setattr(jev_client, "enabled", True)
+
+    (tmp_path / "a.py").write_text("print('a')\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("print('b')\n", encoding="utf-8")
+
+    mock_response = MagicMock()
+    mock_answer = MagicMock()
+    mock_answer.model_dump.return_value = {"choice": "core", "confidence": 0.9}
+    mock_response.answers = {"architectural_role": mock_answer}
+
+    with patch(
+        "app.services.jev_client.AsyncTypeSafeClient"
+    ) as MockClient:
+        MockClient.return_value.system_one = AsyncMock(return_value=mock_response)
+
+        graph = await scan_repository(str(tmp_path))
+
+    assert len(graph.files) == 2
+    assert jev_client.calls_made == 1  # exactly one call was spent
+    assert all(file.load_bearing_score >= 0 for file in graph.files)
+    jev_client.reset_call_budget()

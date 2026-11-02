@@ -35,6 +35,7 @@ async def scan_repository(
     previous_files: dict[str, CachedFile] | None = None,
     max_files: int | None = None,
 ) -> RepositoryGraph:
+    jev_client.reset_call_budget()
     root = validate_repo_path(path_text)
     churn = file_churn(root)
     graph = RepositoryGraph(root_path=str(root), name=root.name)

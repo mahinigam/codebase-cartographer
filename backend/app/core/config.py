@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     jev_base_url: str = "https://api.typesafe.ai"
     jev_model: str = "jev-latest"
     jev_enabled: bool = True  # Master kill-switch
+    jev_max_calls_per_scan: int = 0  # ≤ 0 = unlimited per scan/summary fan-out
     jev_batch_concurrency: int = 5  # Max parallel Jev calls during scan
 
     embedding_provider: str = "gemini"

@@ -245,6 +245,7 @@ Impact data:
 async def generate_summaries_for_repo(
     store: Neo4jStore, repo_path: str, max_files: int | None = None
 ) -> dict:
+    jev_client.reset_call_budget()
     root = Path(repo_path)
     file_paths = store.file_paths(repo_path)
     if not file_paths:
