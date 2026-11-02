@@ -29,14 +29,29 @@ LANGUAGE_BY_SUFFIX = {
 
 def source_files(root: Path) -> list[Path]:
     files: list[Path] = []
+    root_resolved = root.resolve()
     for path in root.rglob("*"):
         if not path.is_file():
             continue
         if any(part in IGNORED_DIRS for part in path.parts):
             continue
-        if path.suffix in LANGUAGE_BY_SUFFIX:
-            files.append(path)
+        if path.suffix not in LANGUAGE_BY_SUFFIX:
+            continue
+        if _escapes_root(path, root_resolved):
+            continue
+        files.append(path)
     return sorted(files)
+
+
+def _escapes_root(path: Path, root_resolved: Path) -> bool:
+    """True when a symlinked file resolves outside the scanned root."""
+    if not path.is_symlink():
+        return False
+    try:
+        return not path.resolve().is_relative_to(root_resolved)
+    except OSError:
+        # Unresolvable symlink: skip rather than risk an escape read.
+        return True
 
 
 def language_for(path: Path) -> str:

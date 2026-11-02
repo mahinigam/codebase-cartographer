@@ -99,6 +99,23 @@ async def scan_repository(
     return graph
 
 
+def _safe_snippet(root: Path, relative: str, limit: int) -> str:
+    """Read a bounded text snippet from a file inside the scanned root.
+
+    Files that resolve outside the root (e.g. an escape symlink) — as well
+    as unreadable paths — contribute no snippet, mirroring the containment
+    guarantee of ``_summarize_file`` and ``source_files``.
+    """
+    try:
+        repo_root = root.resolve()
+        resolved = (root / relative).resolve()
+        if not resolved.is_relative_to(repo_root) or not resolved.is_file():
+            return ""
+        return resolved.read_text(encoding="utf-8", errors="ignore")[:limit]
+    except Exception:
+        return ""
+
+
 def _same_stat_fingerprint(file: CodeFile, stat: os.stat_result) -> bool:
     return (
         file.content_hash is not None
@@ -280,14 +297,7 @@ async def _classify_files_with_jev(graph: RepositoryGraph, root: Path) -> None:
 
     async def classify_one(file: CodeFile) -> None:
         async with semaphore:
-            # Read snippet for context
-            snippet = ""
-            try:
-                full_path = root / file.path
-                if full_path.exists():
-                    snippet = full_path.read_text(encoding="utf-8", errors="ignore")[:2000]
-            except Exception:
-                pass
+            snippet = _safe_snippet(root, file.path, 2000)
 
             result = await jev_client.classify_file(
                 file_path=file.path,
@@ -393,13 +403,7 @@ async def _detect_tests_with_jev(graph: RepositoryGraph, root: Path) -> None:
 
     async def detect_one(file: CodeFile) -> None:
         async with semaphore:
-            snippet = ""
-            try:
-                full_path = root / file.path
-                if full_path.exists():
-                    snippet = full_path.read_text(encoding="utf-8", errors="ignore")[:1500]
-            except Exception:
-                pass
+            snippet = _safe_snippet(root, file.path, 1500)
 
             result = await jev_client.detect_test_file(
                 file_path=file.path,
@@ -440,13 +444,7 @@ async def _detect_frameworks_with_jev(graph: RepositoryGraph, root: Path) -> Non
 
     async def detect_one(file: CodeFile) -> None:
         async with semaphore:
-            snippet = ""
-            try:
-                full_path = root / file.path
-                if full_path.exists():
-                    snippet = full_path.read_text(encoding="utf-8", errors="ignore")[:1500]
-            except Exception:
-                pass
+            snippet = _safe_snippet(root, file.path, 1500)
 
             result = await jev_client.detect_framework(
                 file_path=file.path,
@@ -498,13 +496,7 @@ async def _detect_dead_code_with_jev(graph: RepositoryGraph, root: Path) -> None
 
     async def detect_one(file: CodeFile) -> None:
         async with semaphore:
-            snippet = ""
-            try:
-                full_path = root / file.path
-                if full_path.exists():
-                    snippet = full_path.read_text(encoding="utf-8", errors="ignore")[:1000]
-            except Exception:
-                pass
+            snippet = _safe_snippet(root, file.path, 1000)
 
             result = await jev_client.detect_dead_code(
                 file_path=file.path,

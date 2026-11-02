@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 
 from app.core.config import settings
+from app.indexing.scanner import _safe_snippet
 from app.services.jev_client import jev_client
 from app.services.llm import llm_client
 from app.services.neo4j_store import Neo4jStore
@@ -256,13 +257,7 @@ async def generate_summaries_for_repo(
         async def triage_one(path: str) -> tuple[str, float, bool]:
             async with semaphore:
                 meta = file_meta.get(path, {})
-                snippet = ""
-                try:
-                    p = root / path
-                    if p.exists():
-                        snippet = p.read_text(encoding="utf-8", errors="ignore")[:1000]
-                except Exception:
-                    pass
+                snippet = _safe_snippet(root, path, 1000)
 
                 result = await jev_client.triage_for_summary(
                     file_path=path,
