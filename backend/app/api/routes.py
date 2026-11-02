@@ -86,12 +86,16 @@ async def scan(request: ScanRequest, http_request: Request) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     with neo4j_store() as store:
+        try:
+            store.check_repository_cap(str(root))
+        except RepositoryTooLarge as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         previous_files = store.scan_cache(str(root)) if request.incremental else None
         try:
             graph = await scan_repository(str(root), previous_files=previous_files)
+            store.upsert_repository_graph(graph)
         except (UnsafeRepositoryPath, RepositoryTooLarge) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        store.upsert_repository_graph(graph)
         overview = store.overview(repo_path=graph.root_path)
         summary_status = None
         if request.summarize:
@@ -124,6 +128,26 @@ def overview(repo_path: str | None = None) -> dict:
 def repositories() -> dict:
     with neo4j_store() as store:
         return {"repositories": store.repositories()}
+
+
+@router.delete("/repositories")
+async def purge_repository(
+    http_request: Request,
+    repo_path: str = Query(description="Repository root_path to purge from the graph store."),
+) -> dict:
+    if not settings.api_token:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Purging stores is destructive: configure API_TOKEN in .env "
+                "(and send it as Authorization: Bearer or X-API-Key) to enable."
+            ),
+        )
+    _enforce_rate_limit(http_request)
+    with neo4j_store() as store:
+        if not store.delete_repository(repo_path):
+            raise HTTPException(status_code=404, detail="Repository not found in graph")
+    return {"deleted": repo_path}
 
 
 @router.get("/files")

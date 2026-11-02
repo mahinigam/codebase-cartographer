@@ -223,3 +223,61 @@ async def test_scan_summary_exception(monkeypatch, mock_store_fixture):
     resp = client.post("/api/scan", json={"path": "/repo", "summarize": True})
     assert resp.status_code == 200
     assert resp.json()["summaries"] == {"error": "gen fail"}
+
+
+def test_purge_forbidden_without_token(monkeypatch, mock_store_fixture):
+    monkeypatch.setattr(settings, "scan_rate_limit_per_minute", 0)
+    monkeypatch.setattr(settings, "api_token", None)
+
+    response = client.delete("/api/repositories?repo_path=/repo")
+
+    assert response.status_code == 403
+    mock_store_fixture.delete_repository.assert_not_called()
+
+
+def test_purge_requires_token_header(monkeypatch, mock_store_fixture):
+    monkeypatch.setattr(settings, "scan_rate_limit_per_minute", 0)
+    monkeypatch.setattr(settings, "api_token", "secret")
+
+    response = client.delete("/api/repositories?repo_path=/repo")
+
+    assert response.status_code == 401
+
+
+def test_purge_repository(monkeypatch, mock_store_fixture):
+    monkeypatch.setattr(settings, "scan_rate_limit_per_minute", 0)
+    monkeypatch.setattr(settings, "api_token", "secret")
+    mock_store_fixture.delete_repository.return_value = True
+
+    response = client.delete(
+        "/api/repositories?repo_path=/repo", headers={"Authorization": "Bearer secret"}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"deleted": "/repo"}
+    mock_store_fixture.delete_repository.assert_called_once_with("/repo")
+
+
+def test_purge_repository_not_found(monkeypatch, mock_store_fixture):
+    monkeypatch.setattr(settings, "scan_rate_limit_per_minute", 0)
+    monkeypatch.setattr(settings, "api_token", "secret")
+    mock_store_fixture.delete_repository.return_value = False
+
+    response = client.delete(
+        "/api/repositories?repo_path=/missing", headers={"X-API-Key": "secret"}
+    )
+
+    assert response.status_code == 404
+
+
+def test_scan_rejects_repository_cap(monkeypatch, mock_store_fixture):
+    from app.core.errors import RepositoryTooLarge
+
+    monkeypatch.setattr(settings, "scan_rate_limit_per_minute", 0)
+    monkeypatch.setattr("app.api.routes.validate_repo_path", lambda x: "/repo")
+    mock_store_fixture.check_repository_cap.side_effect = RepositoryTooLarge("store cap reached")
+
+    response = client.post("/api/scan", json={"path": "/repo", "summarize": False})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "store cap reached"

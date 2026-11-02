@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from neo4j import GraphDatabase
 
 from app.core.config import settings
+from app.core.errors import RepositoryTooLarge
 from app.models.graph import CachedFile, CodeFile, CodeSymbol, ImportEdge, RepositoryGraph
 from app.services.jev_client import jev_client
 
@@ -58,8 +59,70 @@ class Neo4jStore:
 
     def upsert_repository_graph(self, graph: RepositoryGraph) -> None:
         self.ensure_schema()
+        self.check_repository_cap(graph.root_path)
         with self.driver.session() as session:
             session.execute_write(self._write_graph, graph)
+
+    def check_repository_cap(self, root_path: str) -> None:
+        """Reject indexing a NEW repository once the store cap is reached.
+
+        Re-indexing an existing root is always allowed. Set
+        ``scan_max_repositories <= 0`` to disable the cap.
+        """
+        cap = settings.scan_max_repositories
+        if cap <= 0:
+            return
+        with self.driver.session() as session:
+            existing = session.run(
+                "MATCH (r:Repository {root_path: $root_path}) RETURN count(r) AS count",
+                root_path=root_path,
+            ).single()
+            if existing and int(existing["count"]) > 0:
+                return
+            total = session.run("MATCH (r:Repository) RETURN count(r) AS count").single()
+            if total and int(total["count"]) >= cap:
+                raise RepositoryTooLarge(
+                    f"Store already holds {total['count']} repositories; "
+                    f"scan_max_repositories is {cap}. Purge one via "
+                    "DELETE /api/repositories or raise the limit."
+                )
+
+    def delete_repository(self, root_path: str) -> bool:
+        """Purge a repository's entire region (files, symbols, summaries).
+
+        Returns True when a repository existed and was deleted, False when
+        the given root_path has no Repository node. Orphaned
+        ExternalDependency nodes left behind by the purge are removed.
+        """
+        with self.driver.session() as session:
+            record = session.run(
+                """
+                MATCH (r:Repository {root_path: $root_path})
+                OPTIONAL MATCH (r)-[:CONTAINS]->(f:File)
+                OPTIONAL MATCH (f)-[:DEFINES]->(s:Symbol)
+                OPTIONAL MATCH (f)-[:SUMMARIZES]->(sm:Summary)
+                WITH r, collect(DISTINCT f) AS files,
+                     collect(DISTINCT s) AS symbols,
+                     collect(DISTINCT sm) AS summaries
+                WITH r, files + symbols + summaries AS doomed
+                FOREACH (node IN doomed | DETACH DELETE node)
+                DELETE r
+                RETURN coalesce(size(doomed) > 0, false) AS deleted_region,
+                       count(r) AS repositories
+                """,
+                root_path=root_path,
+            ).single()
+            if not record or int(record["repositories"]) == 0:
+                return False
+        with self.driver.session() as session:
+            session.run(
+                """
+                MATCH (dep:ExternalDependency)
+                WHERE NOT ()-[:DEPENDS_ON]->(dep)
+                DETACH DELETE dep
+                """
+            )
+        return True
 
     @staticmethod
     def _write_graph(tx, graph: RepositoryGraph) -> None:

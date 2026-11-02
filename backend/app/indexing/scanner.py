@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from app.core.config import settings
+from app.core.errors import RepositoryTooLarge
 from app.indexing.discovery import language_for, safe_relative, source_files
 from app.indexing.git_history import file_churn
 from app.indexing.js_parser import parse_js_like
@@ -13,10 +14,6 @@ from app.services.jev_client import jev_client
 
 
 class UnsafeRepositoryPath(ValueError):
-    pass
-
-
-class RepositoryTooLarge(ValueError):
     pass
 
 

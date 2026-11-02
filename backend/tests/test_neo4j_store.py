@@ -394,3 +394,89 @@ def test_clamp_graph_limits():
 
 def test_search_words():
     assert "test" in _search_words("Test")
+
+
+def test_check_repository_cap_blocks_new_repository(store, monkeypatch):
+    from app.core.config import settings
+    from app.core.errors import RepositoryTooLarge
+
+    monkeypatch.setattr(settings, "scan_max_repositories", 2)
+    session = store.driver.session.return_value.__enter__.return_value
+
+    def mock_run(query, **kwargs):
+        if "root_path: $root_path" in query:
+            return MockResult([])  # new root: not yet in the store
+        return MockResult([{"count": 2}])  # store already holds the cap
+
+    session.run.side_effect = mock_run
+
+    with pytest.raises(RepositoryTooLarge):
+        store.check_repository_cap("/new/repo")
+
+
+def test_check_repository_cap_allows_existing_repository_at_cap(store, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "scan_max_repositories", 2)
+    session = store.driver.session.return_value.__enter__.return_value
+
+    def mock_run(query, **kwargs):
+        if "root_path: $root_path" in query:
+            return MockResult([{"count": 1}])  # existing root
+        return MockResult([{"count": 2}])
+
+    session.run.side_effect = mock_run
+
+    store.check_repository_cap("/existing/repo")  # must not raise
+
+
+def test_check_repository_cap_allows_new_repository_below_cap(store, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "scan_max_repositories", 5)
+    session = store.driver.session.return_value.__enter__.return_value
+
+    def mock_run(query, **kwargs):
+        if "root_path: $root_path" in query:
+            return MockResult([])
+        return MockResult([{"count": 1}])
+
+    session.run.side_effect = mock_run
+
+    store.check_repository_cap("/new/repo")  # must not raise
+
+
+def test_check_repository_cap_disabled(store, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "scan_max_repositories", 0)
+    store.check_repository_cap("/any/repo")  # must not touch the database
+
+
+def test_delete_repository_purges_region_and_orphans(store):
+    session = store.driver.session.return_value.__enter__.return_value
+    queries: list[str] = []
+
+    def mock_run(query, **kwargs):
+        queries.append(query)
+        if "DELETE r" in query:
+            return MockResult([{"deleted_region": True, "repositories": 1}])
+        return None
+
+    session.run.side_effect = mock_run
+
+    assert store.delete_repository("/repo") is True
+    assert any("(dep:ExternalDependency)" in q and "DETACH DELETE dep" in q for q in queries)
+
+
+def test_delete_repository_missing_returns_false(store):
+    session = store.driver.session.return_value.__enter__.return_value
+
+    def mock_run(query, **kwargs):
+        if "DELETE r" in query:
+            return MockResult([])
+        return None
+
+    session.run.side_effect = mock_run
+
+    assert store.delete_repository("/missing") is False
