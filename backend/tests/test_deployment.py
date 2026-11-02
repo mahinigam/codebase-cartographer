@@ -24,9 +24,14 @@ def _compose_text() -> str:
 
 def _neo4j_service_text() -> str:
     """Extract the ``neo4j`` service block from the compose file."""
+    return _service_text("neo4j")
+
+
+def _service_text(name: str) -> str:
+    """Extract one top-level service block from the compose file."""
     text = _compose_text()
     lines = text.splitlines()
-    start = next(i for i, line in enumerate(lines) if line.strip() == "neo4j:")
+    start = next(i for i, line in enumerate(lines) if line.strip() == f"{name}:")
     end = next(
         (
             i
@@ -75,3 +80,85 @@ def test_env_example_ships_no_neo4j_password() -> None:
             break
     else:
         raise AssertionError("expected a NEO4J_PASSWORD entry in .env.example")
+
+
+# ── Hardening for non-dev deployments ──────────────────────────────────────
+
+
+def test_app_plane_ports_default_to_loopback() -> None:
+    """Backend/frontend must default to loopback via HOST_BIND interpolation."""
+    for service, port in (("backend", "8000"), ("frontend", "5173")):
+        service_text = _service_text(service)
+        port_lines = [
+            line.strip() for line in service_text.splitlines() if f"{port}" in line
+        ]
+        mappings = [line for line in port_lines if line.startswith("- ")]
+        assert mappings, f"expected a published {port} mapping on {service}"
+        mapping = mappings[0].lstrip("- ").strip().strip('"')
+        assert mapping == "${HOST_BIND:-127.0.0.1}:" + f"{port}:{port}", (
+            f"{service} {port} must default to loopback via "
+            f"${{HOST_BIND:-127.0.0.1}} interpolation, found {mapping!r}"
+        )
+
+
+def test_env_example_documents_host_bind() -> None:
+    text = ENV_EXAMPLE.read_text()
+    assert "HOST_BIND=" in text, ".env.example must document HOST_BIND"
+    assert "127.0.0.1" in text, "HOST_BIND default must be loopback"
+
+
+def test_every_service_has_a_healthcheck() -> None:
+    for service in ("neo4j", "backend", "frontend"):
+        service_text = _service_text(service)
+        assert "healthcheck:" in service_text, f"{service} lacks a healthcheck"
+        assert "test:" in service_text, f"{service} healthcheck lacks a test"
+        assert "interval:" in service_text, f"{service} healthcheck lacks an interval"
+
+
+def test_boot_order_waits_for_healthy_dependencies() -> None:
+    """backend waits for a healthy neo4j; frontend waits for a healthy backend."""
+    backend = _service_text("backend")
+    frontend = _service_text("frontend")
+
+    assert "condition: service_healthy" in backend, (
+        "backend must gate on neo4j service_healthy"
+    )
+    assert "neo4j:" in backend
+    assert "condition: service_healthy" in frontend, (
+        "frontend must gate on backend service_healthy"
+    )
+    assert "backend:" in frontend
+    # Simple list-form depends_on cannot express the condition.
+    for service_text, name in ((backend, "backend"), (frontend, "frontend")):
+        depends_block = next(
+            (line for line in service_text.splitlines() if "depends_on:" in line),
+            "",
+        )
+        assert depends_block.endswith("depends_on:"), (
+            f"{name} depends_on must use mapping form (condition support)"
+        )
+
+
+def test_app_containers_have_no_new_privileges() -> None:
+    for service in ("backend", "frontend"):
+        service_text = _service_text(service)
+        assert "no-new-privileges:true" in service_text.replace(" ", ""), (
+            f"{service} must set security_opt no-new-privileges:true"
+        )
+
+
+def test_health_endpoint_is_token_free() -> None:
+    """Container/liveness probes must keep working when API_TOKEN is set."""
+    routes = (REPO_ROOT / "backend" / "app" / "api" / "routes.py").read_text()
+    main = (REPO_ROOT / "backend" / "app" / "main.py").read_text()
+
+    assert "health_router = APIRouter()" in routes, (
+        "/api/health must live on a dependency-free router"
+    )
+    # The token-gated router must NOT carry the health endpoint.
+    router_block = routes.split("router = APIRouter(dependencies=", 1)[1]
+    assert '@router.get("/health")' not in router_block, (
+        "/api/health must not require an API token"
+    )
+    assert "health_router" in main, "main.py must include the token-free health_router"
+

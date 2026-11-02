@@ -49,6 +49,20 @@ def require_api_token(
         )
 
 
+health_router = APIRouter()  # Probe endpoints (always token-free)
+
+
+@health_router.get("/health")
+def health() -> dict:
+    neo4j_ok = False
+    try:
+        with neo4j_store() as store:
+            neo4j_ok = store.ping()
+    except Exception:
+        neo4j_ok = False
+    return {"ok": True, "neo4j": neo4j_ok}
+
+
 router = APIRouter(dependencies=[Depends(require_api_token)])
 
 
@@ -67,17 +81,6 @@ def _enforce_rate_limit(request: Request) -> None:
             detail=f"Scan rate limit exceeded: {limit} requests per minute.",
         )
     window.append(now)
-
-
-@router.get("/health")
-def health() -> dict:
-    neo4j_ok = False
-    try:
-        with neo4j_store() as store:
-            neo4j_ok = store.ping()
-    except Exception:
-        neo4j_ok = False
-    return {"ok": True, "neo4j": neo4j_ok}
 
 
 @router.post("/scan")

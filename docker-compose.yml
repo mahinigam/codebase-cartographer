@@ -21,6 +21,12 @@ services:
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
 
   backend:
     build:
@@ -28,7 +34,10 @@ services:
     container_name: codebase-cartographer-backend
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      # App plane: loopback by default. Set HOST_BIND=0.0.0.0 in .env to
+      # expose the app to other machines (then also configure API_TOKEN and
+      # CORS_ORIGINS — see README "Hardening for non-dev deployments").
+      - "${HOST_BIND:-127.0.0.1}:8000:8000"
     env_file:
       - .env
     environment:
@@ -37,8 +46,23 @@ services:
       OLLAMA_BASE_URL: http://host.docker.internal:11434
     volumes:
       - ./:/workspace:ro
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
     depends_on:
-      - neo4j
+      neo4j:
+        condition: service_healthy
 
   frontend:
     build:
@@ -49,13 +73,23 @@ services:
     container_name: codebase-cartographer-frontend
     restart: unless-stopped
     ports:
-      - "5173:5173"
+      # App plane: loopback by default (see backend note re HOST_BIND).
+      - "${HOST_BIND:-127.0.0.1}:5173:5173"
     environment:
       API_BASE_URL: http://backend:8000
       NEXT_PUBLIC_API_BASE: http://localhost:8000
       NEXT_PUBLIC_DEFAULT_REPO: /workspace
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5173/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   neo4j_data:

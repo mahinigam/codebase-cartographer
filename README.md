@@ -701,6 +701,35 @@ Generative summarization uses bounded source snippets rather than automatically 
 
 For environments requiring stronger privacy guarantees, Ollama can be used as the local generative fallback.
 
+### Hardening for non-dev deployments
+
+The default `docker-compose.yml` is tuned for local development:
+
+- **App plane is loopback-only.** Backend (`:8000`) and frontend (`:5173`) are published via `${HOST_BIND:-127.0.0.1}` — they are unreachable from other machines unless you explicitly set `HOST_BIND=0.0.0.0` in `.env`.
+- **Neo4j admin plane is always loopback-only.** Browser (7474) and Bolt (7687) are hard-pinned to `127.0.0.1` and reach the backend over the internal compose network.
+- **Health-gated boot order.** The backend starts only after Neo4j reports healthy; the frontend only after the backend does. Each service ships a container healthcheck (`wget`/`python` probes against `/api/health`), and `/api/health` stays token-free so probes keep working with `API_TOKEN` configured.
+- **Privilege hygiene.** Backend and frontend containers set `no-new-privileges:true`.
+
+Before exposing anything beyond your machine, the minimum bar is:
+
+```bash
+# 1. A strong API token (every /api endpoint except /api/health):
+python -c "import secrets; print(secrets.token_urlsafe(32))"   # → API_TOKEN
+
+# 2. A generated Neo4j password (compose fails fast without one):
+openssl rand -base64 24                                        # → NEO4J_PASSWORD
+
+# 3. Explicit opt-in for network exposure:
+HOST_BIND=0.0.0.0
+
+# 4. Tighten CORS to the actual frontend origin(s):
+CORS_ORIGINS=https://your-frontend-origin
+```
+
+With `HOST_BIND=127.0.0.1` (the default), `API_TOKEN` can stay empty for single-user local use — nothing is reachable off-machine.
+
+Jev's third-party call volume per fan-out is additionally bounded by [`JEV_MAX_CALLS_PER_SCAN`](#two-tier-ai-architecture) (≤ 0 = unlimited, the default).
+
 ---
 
 # Incremental + Bounded by Design
