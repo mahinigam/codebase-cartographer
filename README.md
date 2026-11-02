@@ -810,7 +810,11 @@ cp .env.example .env
 
 Configure the providers you intend to use.
 
-At minimum, local development requires Neo4j credentials. AI features require the corresponding provider credentials or a local Ollama setup.
+Local development requires Neo4j credentials: generate a password once (for
+example `openssl rand -base64 24`) and set `NEO4J_PASSWORD` in `.env`. The
+compose file fails fast if it is missing — no default credential ships with
+the repository. AI features require the corresponding provider credentials or
+a local Ollama setup.
 
 ## 2. Start Neo4j
 
@@ -852,14 +856,16 @@ docker compose up --build
 
 The stack exposes:
 
-| Service | Port |
-|---|---:|
-| Frontend | `5173` |
-| Backend | `8000` |
-| Neo4j Browser | `7474` |
-| Neo4j Bolt | `7687` |
+| Service | Port | Published on |
+|---|---:|---|
+| Frontend | `5173` | all interfaces |
+| Backend | `8000` | all interfaces |
+| Neo4j Browser | `7474` | `127.0.0.1` (loopback only) |
+| Neo4j Bolt | `7687` | `127.0.0.1` (loopback only) |
 
-For anything beyond local development, replace the example Neo4j credentials and configure the relevant authentication and path restrictions.
+Neo4j's admin plane is only reachable from the local machine. Set
+`NEO4J_PASSWORD` in `.env` before starting — compose fails fast without it,
+and the same value authenticates the backend to Bolt.
 
 ---
 

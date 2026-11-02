@@ -4,10 +4,16 @@ services:
     container_name: codebase-cartographer-neo4j
     restart: unless-stopped
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      # Admin plane stays loopback-only: Neo4j Browser/HTTP and Bolt must never
+      # be reachable from other network interfaces. The backend reaches Bolt
+      # over the compose network (NEO4J_URI: bolt://neo4j:7687); a locally-run
+      # backend uses the loopback mapping below.
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
     environment:
-      NEO4J_AUTH: neo4j/codebase-cartographer
+      # Fail fast instead of shipping a committed credential: generate a
+      # per-deployment NEO4J_PASSWORD, e.g. `openssl rand -base64 24`.
+      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD:?Set a generated NEO4J_PASSWORD in .env (e.g. openssl rand -base64 24)}"
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_dbms_security_procedures_unrestricted: apoc.*
       NEO4J_server_memory_heap_initial__size: 512m

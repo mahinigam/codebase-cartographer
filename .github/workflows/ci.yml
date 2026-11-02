@@ -30,6 +30,18 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Guard committed credentials
+        run: |
+          if grep -rEl '^\s*NEO4J_(AUTH|PASSWORD)=\S' \
+              --include='.env*' --exclude-dir=.venv --exclude-dir=node_modules . ; then
+            echo "::error::A non-empty NEO4J_* credential value is tracked in a committed .env* file."
+            exit 1
+          fi
+          if grep -q 'NEO4J_AUTH:.*neo4j/[0-9A-Za-z]' docker-compose.yml; then
+            echo "::error::docker-compose.yml contains a literal Neo4j password. Use \${NEO4J_PASSWORD:?} instead."
+            exit 1
+          fi
+
       - name: Run quality checks
         env:
           PYTHON_BIN: python
