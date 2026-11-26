@@ -5,7 +5,6 @@ import re
 from pathlib import Path
 
 from app._native import parse_js_like_native
-
 from app.models.graph import CodeSymbol, ImportEdge
 
 Parser = object  # Kept for test monkeypatch compatibility.

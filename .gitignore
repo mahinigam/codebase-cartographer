@@ -39,6 +39,7 @@ next-env.d.ts
 
 # Python test coverage outputs
 .coverage
+.coverage.*
 htmlcov/
 
 # Node/npm logs

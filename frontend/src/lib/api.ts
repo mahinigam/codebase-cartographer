@@ -184,14 +184,13 @@ export function withQuery(
 async function request(path: string, init?: RequestInit) {
   const base = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
   const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
+  const headers = new Headers(init?.headers);
+  if (init?.body) headers.set("Content-Type", "application/json");
+  if (apiToken) headers.set("X-API-Key", apiToken);
   const response = await fetch(`${base}${path}`, {
     ...init,
     cache: "no-store",
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiToken ? { "X-API-Key": apiToken } : {}),
-      ...(init?.headers ?? {})
-    }
+    headers,
   });
   if (!response.ok) {
     const text = await response.text();

@@ -788,6 +788,21 @@ The frontend coverage configuration targets **85% coverage across lines, functio
 bash ./check.sh
 ```
 
+### Extended verification
+
+The default check is deterministic: it uses no external AI provider or persistent database.
+
+```bash
+# Disposable Neo4j graph-persistence tests (Docker required)
+./scripts/test-integration.sh
+
+# Browser critical-path test (one-time browser install)
+cd backend && uv run playwright install chromium
+cd .. && ./scripts/test-e2e.sh
+```
+
+Both extended checks use controlled local fixtures. Live AI-provider smoke checks are intentionally opt-in and are not part of the automated gate.
+
 ### Continuous Integration
 
 GitHub Actions runs the repository's automated test and validation workflow for changes to `main` and pull requests.
@@ -888,12 +903,16 @@ To start the complete stack:
 docker compose up --build
 ```
 
+By default, every published service port is loopback-only. Set `HOST_BIND=0.0.0.0`
+only for an intentionally exposed deployment, with an API token and explicit CORS
+configuration.
+
 The stack exposes:
 
 | Service | Port | Published on |
 |---|---:|---|
-| Frontend | `5173` | all interfaces |
-| Backend | `8000` | all interfaces |
+| Frontend | `5173` | `127.0.0.1` (loopback only) |
+| Backend | `8000` | `127.0.0.1` (loopback only) |
 | Neo4j Browser | `7474` | `127.0.0.1` (loopback only) |
 | Neo4j Bolt | `7687` | `127.0.0.1` (loopback only) |
 
@@ -948,6 +967,10 @@ codebase-cartographer/
 │   │
 │   ├── rust-toolchain.toml
 │   └── tests/
+│       ├── integration/          # Real Neo4j persistence/rescan tests
+│       ├── test_routes.py        # FastAPI contracts and authorization
+│       ├── test_rust_parity.py   # Python ↔ native scanner behavior
+│       └── test_test_commands.py # Test-harness and documentation contracts
 │
 ├── frontend/
 │   ├── src/
@@ -956,11 +979,20 @@ codebase-cartographer/
 │   │   ├── lib/
 │   │   └── styles/
 │   │
+│   ├── e2e/                      # Headless browser critical-path checks
 │   ├── package.json
 │   └── vitest.config.ts
 │
 ├── docs/
-│   └── architecture.md
+│   ├── architecture.md
+│   ├── plans/
+│   └── specs/
+│
+├── scripts/
+│   ├── test-e2e.sh
+│   └── test-integration.sh
+│
+├── docker-compose.integration.yml
 │
 ├── .github/
 │   └── workflows/
