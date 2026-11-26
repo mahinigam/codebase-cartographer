@@ -1,4 +1,9 @@
+import os
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INTEGRATION_COMPOSE = REPO_ROOT / "docker-compose.integration.yml"
@@ -24,6 +29,63 @@ def test_extended_test_scripts_cleanup_resources() -> None:
         contents = script.read_text()
         assert "set -euo pipefail" in contents
         assert "trap cleanup EXIT" in contents
+
+
+def test_integration_script_preserves_test_and_cleanup_failures() -> None:
+    contents = INTEGRATION_SCRIPT.read_text()
+    assert "local status=$?" in contents
+    assert "trap - EXIT" in contents
+    assert "down --volumes --remove-orphans" in contents
+
+
+@pytest.mark.parametrize(
+    ("up_status", "test_status", "down_status", "expected_status"),
+    [(0, 23, 42, 23), (0, 0, 42, 42), (37, 0, 42, 37)],
+)
+def test_integration_script_returns_the_original_or_cleanup_status(
+    tmp_path: Path,
+    up_status: int,
+    test_status: int,
+    down_status: int,
+    expected_status: int,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    docker = bin_dir / "docker"
+    docker.write_text(
+        """#!/bin/sh
+case " $* " in
+  *" up --wait neo4j "*) exit "$FAKE_COMPOSE_UP_STATUS" ;;
+  *" down --volumes --remove-orphans "*) exit "$FAKE_COMPOSE_DOWN_STATUS" ;;
+esac
+exit 0
+"""
+    )
+    uv = bin_dir / "uv"
+    uv.write_text('#!/bin/sh\nexit "$FAKE_TEST_STATUS"\n')
+    docker.chmod(0o755)
+    uv.chmod(0o755)
+
+    env = os.environ | {
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "FAKE_COMPOSE_UP_STATUS": str(up_status),
+        "FAKE_COMPOSE_DOWN_STATUS": str(down_status),
+        "FAKE_TEST_STATUS": str(test_status),
+    }
+    bash = shutil.which("bash")
+    assert bash is not None
+    # The script path is fixed; only the fake tools in PATH are test-controlled.
+    result = subprocess.run(  # noqa: S603
+        [bash, str(INTEGRATION_SCRIPT)],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == expected_status
+    if down_status != 0:
+        assert "Compose cleanup failed with status 42." in result.stderr
 
 
 def test_default_gate_stays_credential_and_service_free() -> None:

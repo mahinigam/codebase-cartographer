@@ -27,25 +27,25 @@
 
 **Files:** Modify `check.sh`, `.github/workflows/ci.yml`, and `backend/tests/test_test_commands.py`.
 
-- [ ] Add `test_default_gate_runs_rust_unit_tests`, asserting that `CHECK_SCRIPT.read_text()` contains `cargo test --manifest-path rust/Cargo.toml`.
-- [ ] Run `cd backend && uv run pytest tests/test_test_commands.py::test_default_gate_runs_rust_unit_tests -q`; it must fail because the script does not invoke Cargo yet.
-- [ ] In `check.sh`, after `cd backend`, add `cargo test --manifest-path rust/Cargo.toml` before pytest. Do not make Rust tests depend on Docker or external providers.
-- [ ] Add the pinned Rust 1.94.0 toolchain setup to the existing `check` workflow job before `uv sync`, so CI builds the PyO3 extension and runs Cargo with the repository's declared toolchain.
+- [x] Add `test_default_gate_runs_rust_unit_tests`, asserting that `CHECK_SCRIPT.read_text()` contains `cargo test --manifest-path rust/Cargo.toml`.
+- [x] Run `cd backend && uv run pytest tests/test_test_commands.py::test_default_gate_runs_rust_unit_tests -q`; it must fail because the script does not invoke Cargo yet.
+- [x] In `check.sh`, after `cd backend`, add `cargo test --manifest-path rust/Cargo.toml` before pytest. Do not make Rust tests depend on Docker or external providers.
+- [x] Add the pinned Rust 1.94.0 toolchain setup to the existing `check` workflow job before `uv sync`, so CI builds the PyO3 extension and runs Cargo with the repository's declared toolchain.
 
 ```yaml
 - uses: dtolnay/rust-toolchain@1.94.0
 ```
 
-- [ ] Run `cd backend && cargo test --manifest-path rust/Cargo.toml`, then run `bash ./check.sh`; expect Cargo tests and the existing Python, lint, type, frontend, and coverage checks to pass.
-- [ ] Commit as `test: include Rust unit tests in default gate`.
+- [x] Run `cd backend && cargo test --manifest-path rust/Cargo.toml`, then run `bash ./check.sh`; expect Cargo tests and the existing Python, lint, type, frontend, and coverage checks to pass.
+- [x] Commit as `test: include Rust unit tests in default gate`.
 
 ### Task 2: Exercise persisted graph data through the public API
 
 **Files:** Modify `backend/tests/integration/test_graph_persistence.py`, `scripts/test-integration.sh`, and `backend/tests/test_test_commands.py`; retain `backend/tests/integration/conftest.py` isolation.
 
-- [ ] Add a failing integration case using `fastapi.testclient.TestClient(app)` and the existing `neo4j_store` fixture with the temporary two-file repository. The fixture clears Neo4j and disables Jev; this keeps the API scan isolated and prevents provider calls. POST `/api/scan` with `{"path": str(sample_repository), "summarize": false, "incremental": false}` and assert HTTP 200.
-- [ ] Read `/api/files`, `/api/overview`, and `/api/graph` with `repo_path=sample_repository`; assert both file paths and the `main.py` → `service.py` edge are returned from Neo4j.
-- [ ] Delete `service.py`, scan again, and assert the public file and graph endpoints no longer expose the stale file or edge.
+- [x] Add an integration case using `fastapi.testclient.TestClient(app)` and the existing `neo4j_store` fixture with the temporary two-file repository. The fixture clears Neo4j and disables Jev; this keeps the API scan isolated and prevents provider calls. POST `/api/scan` with `{"path": str(sample_repository), "summarize": false, "incremental": false}` and assert HTTP 200.
+- [x] Read `/api/files`, `/api/overview`, and `/api/graph` with the returned repository root path; assert both file paths and the `main.py` → `service.py` edge are returned from Neo4j.
+- [x] Delete `service.py`, scan again, and assert the public file and graph endpoints no longer expose the stale file or edge.
 - [ ] Keep the fixture assertions tied to public response shapes:
 
 ```python
@@ -60,10 +60,12 @@ assert {
 }
 ```
 
-- [ ] Run `./scripts/test-integration.sh tests/integration/test_graph_persistence.py -v`; the script changes to `backend` before pytest, so this path is relative to that directory. Expect both direct-store and public-API persistence tests to pass, with Docker resources removed afterward.
-- [ ] Preserve the pytest exit status in the integration script's `EXIT` trap. If test execution succeeds but Compose cleanup fails, return the cleanup failure; if tests fail, report cleanup failure to stderr without masking the original test failure.
-- [ ] Extend the command-contract test to assert the integration script invokes `docker compose down --volumes --remove-orphans` from its exit trap. Run `cd backend && uv run pytest tests/test_test_commands.py -q`.
-- [ ] Commit as `test: verify persisted graph through API`.
+The public API already satisfies these behaviors, so this is a coverage addition rather than a production behavior change; the new integration case passed on its first run.
+
+- [x] Run `./scripts/test-integration.sh tests/integration/test_graph_persistence.py -v`; the script changes to `backend` before pytest, so this path is relative to that directory. Expect both direct-store and public-API persistence tests to pass, with Docker resources removed afterward.
+- [x] Preserve the pytest exit status in the integration script's `EXIT` trap. If test execution succeeds but Compose cleanup fails, return the cleanup failure; if tests fail, report cleanup failure to stderr without masking the original test failure.
+- [x] Extend the command-contract test to verify `docker compose down --volumes --remove-orphans` cleanup, including original-test and cleanup exit-status handling. Run `cd backend && uv run pytest tests/test_test_commands.py -q`.
+- [x] Commit as `test: verify persisted graph through API`.
 
 ### Task 3: Run Neo4j integration in its own CI job
 

@@ -7,7 +7,21 @@ compose=(docker compose --project-name "$project_name" --file "$project_root/doc
 export COMPOSE_PROGRESS=quiet
 
 cleanup() {
-  "${compose[@]}" down --volumes --remove-orphans
+  local status=$?
+  local cleanup_status=0
+  trap - EXIT
+
+  if "${compose[@]}" down --volumes --remove-orphans; then
+    :
+  else
+    cleanup_status=$?
+    echo "Compose cleanup failed with status $cleanup_status." >&2
+  fi
+
+  if [[ "$status" -ne 0 ]]; then
+    exit "$status"
+  fi
+  exit "$cleanup_status"
 }
 trap cleanup EXIT
 
