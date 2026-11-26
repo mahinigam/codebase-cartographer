@@ -7,6 +7,7 @@ E2E_SCRIPT = REPO_ROOT / "scripts" / "test-e2e.sh"
 CHECK_SCRIPT = REPO_ROOT / "check.sh"
 GITIGNORE = REPO_ROOT / ".gitignore"
 README = REPO_ROOT / "README.md"
+CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
 
 def test_integration_compose_is_loopback_isolated_and_health_checked() -> None:
@@ -31,6 +32,16 @@ def test_default_gate_stays_credential_and_service_free() -> None:
     assert "playwright" not in contents
     assert "typesafe_api_key" not in contents
     assert "google_api_key" not in contents
+
+
+def test_default_gate_runs_rust_unit_tests() -> None:
+    assert "cargo test --manifest-path rust/Cargo.toml" in CHECK_SCRIPT.read_text()
+
+
+def test_ci_installs_pinned_rust_before_backend_sync() -> None:
+    contents = CI_WORKFLOW.read_text()
+    assert "dtolnay/rust-toolchain@1.94.0" in contents
+    assert contents.index("dtolnay/rust-toolchain@1.94.0") < contents.index("uv sync")
 
 
 def test_parallel_coverage_files_are_ignored() -> None:
