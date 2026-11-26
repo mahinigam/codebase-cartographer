@@ -41,6 +41,9 @@ dev = [
 testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
+markers = [
+  "integration: requires the disposable Neo4j integration service",
+]
 
 [tool.ruff]
 line-length = 100
@@ -60,4 +63,5 @@ dev = [
     "responses>=0.26.3",
     "ruff>=0.6.0",
     "mypy>=1.11.0",
+    "playwright>=1.51,<2",
 ]

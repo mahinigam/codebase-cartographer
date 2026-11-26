@@ -1,0 +1,21 @@
+services:
+  neo4j:
+    image: neo4j:5-community
+    environment:
+      NEO4J_AUTH: neo4j/neo4j-test-password
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:7474"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
+  tests:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.integration
+    depends_on:
+      neo4j:
+        condition: service_healthy
