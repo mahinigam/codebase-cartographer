@@ -141,6 +141,8 @@ Cartographer extracts:
 
 JavaScript, JSX, TypeScript, and TSX are analyzed natively in Rust using `tree-sitter-javascript` and `tree-sitter-typescript` (with thread-local parser reuse).
 
+The scanner currently indexes `.py`, `.js`, `.jsx`, `.ts`, and `.tsx` files. Other languages and file extensions are not indexed.
+
 The parser recognizes common:
 
 - ES module imports
@@ -173,7 +175,7 @@ The resolver handles common:
 
 - relative imports
 - extensionless modules
-- `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`
+- `.js`, `.jsx`, `.ts`, `.tsx`
 - `/index` conventions
 
 Resolved dependencies become graph edges:
@@ -182,7 +184,7 @@ Resolved dependencies become graph edges:
 File A ──IMPORTS──▶ File B
 ```
 
-Unresolved imports are retained as external dependencies:
+The resolver also checks common `.mjs` and `.cjs` suffixes when resolving an import, but those extensions are not currently discovered or indexed as source files. Unresolved imports are retained as external dependencies:
 
 ```text
 File A ──DEPENDS_ON──▶ "package-name"
@@ -360,7 +362,7 @@ Cartographer also mines Git history and tracks:
 - file churn
 - last modification information
 
-The current implementation examines recent commit history and uses churn as one of the structural signals in the risk model.
+The native Rust scanner uses `git2` to examine up to the 500 most recent commits and uses per-file churn and last-modified timestamps as structural risk signals.
 
 This creates a useful distinction:
 
@@ -549,6 +551,8 @@ Browse:
 - files
 - architecture views
 - risk hotspots
+- previously scanned repositories, with the last active repository restored in the browser
+- scan a repository with optional summary generation, or incrementally rescan an existing one
 
 ## Graph Canvas
 
@@ -559,41 +563,39 @@ The graph supports:
 - pan
 - zoom
 - node selection
-- dependency highlighting
-- risk-oriented filtering
-- test-file filtering
-- isolated-node filtering
-- bounded graph slices for large repositories
+- highlighting a selected file and its direct dependency neighbors
+- impact highlighting for direct and transitive dependents
+- filters for high-risk files (score above 75), test files, and isolated nodes
+- architectural cluster summaries, including cohesion, coupling, and extraction-readiness metadata when available
+- bounded graph slices for large repositories, with graph size and risk statistics
 
 ## Inspector
 
 Selecting a file opens detailed evidence including:
 
 - structural risk
-- risk components
+- risk components: fan-in, fan-out, complexity, and Git churn
 - symbols
 - imports
 - dependents
 - external dependencies
 - architectural role
-- framework
-- semantic risk category
-- dead-code signal
+- detected framework and architecture layer
+- semantic risk category and likely dead-code signal
+- test-file classification when available
 - AI summary
-- impact analysis
+- impact analysis, refactor-safety estimate, blast radius, and suggested strategy
 
 ## Command Palette
 
 `Cmd+K` provides a fast entry point for:
 
-- repository search
-- file lookup
-- symbol lookup
-- architecture questions
+- file and symbol search within the selected repository
+- architecture questions, with keyboard navigation through results
 
 ## Ask Cartographer
 
-Natural-language queries return Markdown responses with supporting evidence that can be used to navigate back into the repository.
+Natural-language queries return Markdown responses with graph and semantic-summary evidence. Semantic matches can be opened in the inspector to continue investigating the repository.
 
 ---
 
@@ -630,11 +632,10 @@ The system is designed to keep the engineer close to the underlying evidence thr
 | Layer | Technology |
 |---|---|
 | **Frontend** | Next.js 16 · React 19 · TypeScript |
-| **Backend** | FastAPI · Python · `uv` |
+| **Backend** | FastAPI · Python 3.11+ · `uv` · native Rust extension through PyO3 |
 | **Graph Database** | Neo4j 5 Community Edition |
-| **Python Analysis** | Python `ast` |
-| **JS/TS Analysis** | Tree-sitter + regex fallback |
-| **Git Analysis** | GitPython |
+| **Source Analysis** | Native Rust · Tree-sitter Python, JavaScript, and TypeScript grammars |
+| **Git Analysis** | Native Rust · `git2` |
 | **Structured AI** | TypeSafe AI / Jev |
 | **Generative AI** | Google Gemini · Ollama fallback |
 | **Embeddings** | Gemini / Ollama fallback |
@@ -642,6 +643,7 @@ The system is designed to keep the engineer close to the underlying evidence thr
 | **UI** | `react-resizable-panels` · `lucide-react` · React Markdown |
 | **Backend Testing** | pytest · pytest-asyncio · pytest-cov |
 | **Frontend Testing** | Vitest · Testing Library |
+| **Rust Testing** | Cargo unit tests |
 | **Static Checks** | Ruff · mypy · TypeScript |
 | **CI** | GitHub Actions |
 | **Containerization** | Docker Compose |
@@ -658,6 +660,7 @@ All endpoints are exposed beneath `/api`.
 | `POST` | `/api/scan` | Scan or incrementally rescan a repository |
 | `GET` | `/api/overview` | Repository statistics + load-bearing files |
 | `GET` | `/api/repositories` | Indexed repositories |
+| `DELETE` | `/api/repositories?repo_path=...` | Purge an indexed repository and its graph data; requires `API_TOKEN` to be configured |
 | `GET` | `/api/files` | Indexed file metadata |
 | `GET` | `/api/graph` | Bounded graph slice + architectural clusters |
 | `GET` | `/api/search` | Keyword file/symbol/dependency search |
@@ -934,12 +937,16 @@ and the same value authenticates the backend to Bolt.
 codebase-cartographer/
 │
 ├── backend/
+│   ├── Dockerfile
+│   ├── pyproject.toml
+│   ├── uv.lock
 │   ├── app/
 │   │   ├── api/
 │   │   │   └── routes.py
 │   │   │
 │   │   ├── core/
-│   │   │   └── config.py
+│   │   │   ├── config.py
+│   │   │   └── errors.py
 │   │   │
 │   │   ├── indexing/
 │   │   │   ├── discovery.py
@@ -974,11 +981,13 @@ codebase-cartographer/
 │   ├── rust-toolchain.toml
 │   └── tests/
 │       ├── integration/          # Real Neo4j persistence/rescan tests
-│       ├── test_routes.py        # FastAPI contracts and authorization
-│       ├── test_rust_parity.py   # Python ↔ native scanner behavior
-│       └── test_test_commands.py # Test-harness and documentation contracts
+│       ├── conftest.py
+│       └── test_*.py             # API, indexing, providers, storage, and deployment tests
 │
 ├── frontend/
+│   ├── Dockerfile
+│   ├── package.json
+│   ├── package-lock.json
 │   ├── src/
 │   │   ├── app/
 │   │   ├── components/
@@ -986,13 +995,10 @@ codebase-cartographer/
 │   │   └── styles/
 │   │
 │   ├── e2e/                      # Headless browser critical-path checks
-│   ├── package.json
 │   └── vitest.config.ts
 │
 ├── docs/
-│   ├── architecture.md
-│   ├── plans/
-│   └── specs/
+│   └── architecture.md
 │
 ├── scripts/
 │   ├── test-e2e.sh
@@ -1000,14 +1006,14 @@ codebase-cartographer/
 │   └── test-live-provider-smoke.sh # Explicitly gated; one live request only
 │
 ├── docker-compose.integration.yml
+├── docker-compose.yml
+├── check.sh
+├── .env.example
 │
 ├── .github/
 │   └── workflows/
 │       └── ci.yml
 │
-├── docker-compose.yml
-├── check.sh
-├── .env.example
 └── LICENSE
 ```
 

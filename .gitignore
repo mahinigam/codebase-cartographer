@@ -21,6 +21,13 @@ data/
 tmp/
 *.log
 
+# Local planning and specification documents
+/docs/plans/
+/docs/specs/
+
+# Local sandbox workspace
+/.stranger-sandbox/
+
 # Generated output and scratch files
 *_output*.json
 *_output.json
