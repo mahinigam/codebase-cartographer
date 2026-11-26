@@ -188,7 +188,7 @@ e2e:
 
 **Files:** Create `scripts/test-live-provider-smoke.sh`; modify `backend/tests/test_test_commands.py`.
 
-- [ ] Make the script reject execution unless `RUN_LIVE_PROVIDER_SMOKE=1`, require `LLM_PROVIDER` to be `gemini` or `ollama`, and require `GEMINI_API_KEY` for Gemini. Print an explicit cost/network warning before making a call.
+- [x] Make the script reject execution unless `RUN_LIVE_PROVIDER_SMOKE=1`, require `LLM_PROVIDER` to be `gemini` or `ollama`, and require `GEMINI_API_KEY` for Gemini. Print an explicit cost/network warning before making a call.
 
 ```bash
 #!/usr/bin/env bash
@@ -206,7 +206,7 @@ esac
 echo "WARNING: this sends one live request to ${LLM_PROVIDER}; provider usage may incur cost."
 ```
 
-- [ ] Run exactly one provider transport call through the existing `LLMClient` instance: `client._gemini(prompt)` when `settings.llm_provider == "gemini"` or `client._ollama(prompt)` for Ollama. Do not call `complete()`, whose retry/fallback behavior can make additional requests. Enforce a 45-second timeout and fail on an empty response.
+- [x] Run exactly one provider transport call through the existing `LLMClient` instance: `client._gemini(prompt)` when `settings.llm_provider == "gemini"` or `client._ollama(prompt)` for Ollama. Do not call `complete()`, whose retry/fallback behavior can make additional requests. Enforce a 45-second timeout and fail on an empty response.
 
 ```python
 import asyncio
@@ -239,9 +239,12 @@ asyncio.run(smoke())
 ```
 
 Invoke this only after the shell guard succeeds. The existing provider client is reused, no fallback provider is called, and the explicit transport method ensures a single bounded outbound call.
-- [ ] Add a test that invokes the script with the opt-in flag unset and asserts nonzero exit plus the explicit opt-in message; it must make no network request.
-- [ ] Run `cd backend && uv run pytest tests/test_test_commands.py -q`; verify `check.sh` and CI do not invoke this script.
-- [ ] Commit as `test: add gated live provider smoke command`.
+- [x] Add guard tests for missing opt-in/provider configuration, asserting the runner is never invoked; exercise both provider branches with a fake client to prove exactly one transport method call and empty-response failure without network access.
+- [x] Run `cd backend && uv run pytest tests/test_test_commands.py -q`; verify `check.sh` and CI do not invoke this script.
+
+The Gemini and Ollama call paths were exercised using a fake `LLMClient`; no live provider call was made.
+
+- [x] Commit as `test: add gated live provider smoke command`.
 
 ### Task 7: Document the finished tiers and verify every safe path
 

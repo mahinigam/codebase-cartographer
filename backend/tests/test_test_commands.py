@@ -1,7 +1,9 @@
 import os
 import re
+import shlex
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -10,6 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 INTEGRATION_COMPOSE = REPO_ROOT / "docker-compose.integration.yml"
 INTEGRATION_SCRIPT = REPO_ROOT / "scripts" / "test-integration.sh"
 E2E_SCRIPT = REPO_ROOT / "scripts" / "test-e2e.sh"
+LIVE_PROVIDER_SMOKE_SCRIPT = REPO_ROOT / "scripts" / "test-live-provider-smoke.sh"
 CHECK_SCRIPT = REPO_ROOT / "check.sh"
 GITIGNORE = REPO_ROOT / ".gitignore"
 README = REPO_ROOT / "README.md"
@@ -155,3 +158,180 @@ def test_readme_documents_test_tiers() -> None:
     for command in ("./check.sh", "./scripts/test-integration.sh", "./scripts/test-e2e.sh"):
         assert command in readme
     assert "opt-in" in readme
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({}, "Set RUN_LIVE_PROVIDER_SMOKE=1"),
+        (
+            {
+                "RUN_LIVE_PROVIDER_SMOKE": "1",
+                "LLM_PROVIDER": "gemini",
+                "GEMINI_API_KEY": "",
+            },
+            "GEMINI_API_KEY is required.",
+        ),
+        (
+            {
+                "RUN_LIVE_PROVIDER_SMOKE": "1",
+                "LLM_PROVIDER": "ollama",
+                "OLLAMA_BASE_URL": "",
+            },
+            "OLLAMA_BASE_URL is required.",
+        ),
+        (
+            {"RUN_LIVE_PROVIDER_SMOKE": "1", "LLM_PROVIDER": "other"},
+            "LLM_PROVIDER must be gemini or ollama.",
+        ),
+    ],
+)
+def test_live_provider_smoke_rejects_unapproved_or_unconfigured_calls(
+    tmp_path: Path, overrides: dict[str, str], message: str
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    uv_marker = tmp_path / "uv-was-called"
+    uv = bin_dir / "uv"
+    uv.write_text('#!/bin/sh\n: > "$PROVIDER_UV_MARKER"\nexit 91\n')
+    uv.chmod(0o755)
+    env = os.environ.copy()
+    for key in (
+        "RUN_LIVE_PROVIDER_SMOKE",
+        "LLM_PROVIDER",
+        "GEMINI_API_KEY",
+        "OLLAMA_BASE_URL",
+    ):
+        env.pop(key, None)
+    env.update(overrides)
+    env.update(
+        {
+            "PATH": f"{bin_dir}:{env['PATH']}",
+            "PROVIDER_UV_MARKER": str(uv_marker),
+        }
+    )
+    bash = shutil.which("bash")
+    assert bash is not None
+    result = subprocess.run(  # noqa: S603
+        [bash, str(LIVE_PROVIDER_SMOKE_SCRIPT)],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 2
+    assert message in result.stderr
+    assert not uv_marker.exists()
+
+
+def _fake_provider_environment(
+    tmp_path: Path, provider: str, response: str
+) -> tuple[dict[str, str], Path]:
+    module_root = tmp_path / "fake-modules"
+    package_dirs = (
+        module_root / "app",
+        module_root / "app" / "core",
+        module_root / "app" / "services",
+    )
+    for package_dir in package_dirs:
+        package_dir.mkdir(parents=True, exist_ok=True)
+        (package_dir / "__init__.py").write_text("")
+
+    (module_root / "app" / "core" / "config.py").write_text(
+        """import os
+
+class Settings:
+    llm_provider = os.environ["LLM_PROVIDER"]
+
+settings = Settings()
+"""
+    )
+    (module_root / "app" / "services" / "llm.py").write_text(
+        """import os
+
+class LLMClient:
+    async def _record(self, provider, prompt):
+        with open(os.environ["PROVIDER_CALL_LOG"], "a") as calls:
+            calls.write(provider + "\\n")
+        return os.environ["SMOKE_RESPONSE"]
+
+    async def _gemini(self, prompt):
+        return await self._record("gemini", prompt)
+
+    async def _ollama(self, prompt):
+        return await self._record("ollama", prompt)
+"""
+    )
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    uv = bin_dir / "uv"
+    python_code = (
+        "import os, sys; "
+        'sys.path.insert(0, os.environ["FAKE_PROVIDER_MODULES"]); '
+        "exec(sys.stdin.read())"
+    )
+    uv.write_text(f"#!/bin/sh\nexec {shlex.quote(sys.executable)} -c {shlex.quote(python_code)}\n")
+    uv.chmod(0o755)
+
+    call_log = tmp_path / "provider-calls.log"
+    env = os.environ.copy()
+    env.update(
+        {
+            "PATH": f"{bin_dir}:{env['PATH']}",
+            "RUN_LIVE_PROVIDER_SMOKE": "1",
+            "LLM_PROVIDER": provider,
+            "GEMINI_API_KEY": "test-key" if provider == "gemini" else "",
+            "OLLAMA_BASE_URL": ("http://127.0.0.1:11434" if provider == "ollama" else ""),
+            "FAKE_PROVIDER_MODULES": str(module_root),
+            "PROVIDER_CALL_LOG": str(call_log),
+            "SMOKE_RESPONSE": response,
+        }
+    )
+    return env, call_log
+
+
+def _run_live_provider_smoke(
+    env: dict[str, str],
+) -> subprocess.CompletedProcess[str]:
+    bash = shutil.which("bash")
+    assert bash is not None
+    return subprocess.run(  # noqa: S603
+        [bash, str(LIVE_PROVIDER_SMOKE_SCRIPT)],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+
+@pytest.mark.parametrize("provider", ["gemini", "ollama"])
+def test_live_provider_smoke_makes_one_direct_call(tmp_path: Path, provider: str) -> None:
+    env, call_log = _fake_provider_environment(tmp_path, provider, "READY")
+    result = _run_live_provider_smoke(env)
+    contents = LIVE_PROVIDER_SMOKE_SCRIPT.read_text()
+
+    assert result.returncode == 0, result.stderr
+    assert "response omitted" in result.stdout
+    assert call_log.read_text().splitlines() == [provider]
+    assert "timeout=45" in contents
+    assert "client.complete(" not in contents
+
+
+def test_live_provider_smoke_rejects_an_empty_provider_response(
+    tmp_path: Path,
+) -> None:
+    env, call_log = _fake_provider_environment(tmp_path, "gemini", "")
+    result = _run_live_provider_smoke(env)
+
+    assert result.returncode != 0
+    assert "did not return a live completion" in result.stderr
+    assert call_log.read_text().splitlines() == ["gemini"]
+
+
+def test_live_provider_smoke_is_not_part_of_automatic_gates() -> None:
+    assert "test-live-provider-smoke.sh" not in CHECK_SCRIPT.read_text()
+    assert "test-live-provider-smoke.sh" not in CI_WORKFLOW.read_text()
