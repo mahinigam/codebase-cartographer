@@ -257,13 +257,16 @@ async def ask(page: Page, question: str, wait_for_search: bool = False) -> None:
     await trigger.click()
     input_box = page.get_by_placeholder("Search files, symbols, or ask Cartographer...")
     await input_box.fill(question)
+    ask_option = page.get_by_text(f'Ask Cartographer: "{question}"')
     if wait_for_search:
         async with page.expect_response(
             lambda response: urlparse(response.url).path == "/api/search"
         ):
-            await expect(page.get_by_text(f'Ask Cartographer: "{question}"')).to_be_visible()
+            await expect(ask_option).to_be_visible()
+    else:
+        await expect(ask_option).to_be_visible()
     async with page.expect_response(lambda response: urlparse(response.url).path == "/api/query"):
-        await input_box.press("Enter")
+        await ask_option.click()
 
 
 async def test_empty_workspace_and_keyboard_workflow(browser: Browser, url: str) -> None:
