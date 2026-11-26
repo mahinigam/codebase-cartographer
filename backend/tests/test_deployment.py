@@ -15,6 +15,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE = REPO_ROOT / "docker-compose.yml"
 ENV_EXAMPLE = REPO_ROOT / ".env.example"
+BACKEND_DOCKERFILE = REPO_ROOT / "backend" / "Dockerfile"
 
 
 def _compose_text() -> str:
@@ -161,4 +162,11 @@ def test_health_endpoint_is_token_free() -> None:
         "/api/health must not require an API token"
     )
     assert "health_router" in main, "main.py must include the token-free health_router"
+
+
+def test_backend_runtime_uses_the_wheel_package() -> None:
+    """The copied source package would hide Maturin's native extension."""
+    dockerfile = BACKEND_DOCKERFILE.read_text()
+    assert "COPY app /app/app" not in dockerfile
+    assert "pip install --no-cache-dir /tmp/wheels/*.whl" in dockerfile
 

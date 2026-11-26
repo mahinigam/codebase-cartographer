@@ -33,7 +33,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /wheels/*.whl /tmp/wheels/
-COPY app /app/app
 
 RUN pip install --no-cache-dir /tmp/wheels/*.whl \
     && rm -rf /tmp/wheels
