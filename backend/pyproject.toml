@@ -55,6 +55,7 @@ ignore = ["S101"]
 
 [dependency-groups]
 dev = [
+    "maturin>=1.7,<2.0",
     "httpx>=0.28.1",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",

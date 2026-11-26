@@ -320,3 +320,17 @@ def test_query_and_impact_are_rate_limited(monkeypatch, mock_store_fixture):
             assert impact_limited.status_code == 429
     finally:
         routes._rate_windows.clear()
+
+
+def test_neo4j_unavailable_returns_503(mock_store_fixture) -> None:
+    from neo4j.exceptions import AuthError, ServiceUnavailable
+
+    mock_store_fixture.repositories.side_effect = ServiceUnavailable("neo4j down")
+    res = client.get("/api/repositories")
+    assert res.status_code == 503
+    assert "Graph database unavailable" in res.json()["detail"]
+
+    mock_store_fixture.overview.side_effect = AuthError("bad password")
+    res_auth = client.get("/api/overview")
+    assert res_auth.status_code == 503
+    assert "Graph database unavailable" in res_auth.json()["detail"]
