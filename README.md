@@ -903,12 +903,16 @@ To start the complete stack:
 docker compose up --build
 ```
 
+By default, every published service port is loopback-only. Set `HOST_BIND=0.0.0.0`
+only for an intentionally exposed deployment, with an API token and explicit CORS
+configuration.
+
 The stack exposes:
 
 | Service | Port | Published on |
 |---|---:|---|
-| Frontend | `5173` | all interfaces |
-| Backend | `8000` | all interfaces |
+| Frontend | `5173` | `127.0.0.1` (loopback only) |
+| Backend | `8000` | `127.0.0.1` (loopback only) |
 | Neo4j Browser | `7474` | `127.0.0.1` (loopback only) |
 | Neo4j Bolt | `7687` | `127.0.0.1` (loopback only) |
 
@@ -963,6 +967,10 @@ codebase-cartographer/
 │   │
 │   ├── rust-toolchain.toml
 │   └── tests/
+│       ├── integration/          # Real Neo4j persistence/rescan tests
+│       ├── test_routes.py        # FastAPI contracts and authorization
+│       ├── test_rust_parity.py   # Python ↔ native scanner behavior
+│       └── test_test_commands.py # Test-harness and documentation contracts
 │
 ├── frontend/
 │   ├── src/
@@ -971,11 +979,20 @@ codebase-cartographer/
 │   │   ├── lib/
 │   │   └── styles/
 │   │
+│   ├── e2e/                      # Headless browser critical-path checks
 │   ├── package.json
 │   └── vitest.config.ts
 │
 ├── docs/
-│   └── architecture.md
+│   ├── architecture.md
+│   ├── plans/
+│   └── specs/
+│
+├── scripts/
+│   ├── test-e2e.sh
+│   └── test-integration.sh
+│
+├── docker-compose.integration.yml
 │
 ├── .github/
 │   └── workflows/
