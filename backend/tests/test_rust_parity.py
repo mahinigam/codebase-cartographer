@@ -18,7 +18,7 @@ GIT_BIN = shutil.which("git") or "/usr/bin/git"
 
 
 def _git(repo_dir: Path, *args: str) -> None:
-    subprocess.run([GIT_BIN, *args], cwd=repo_dir, check=True, capture_output=True)
+    subprocess.run([GIT_BIN, *args], cwd=repo_dir, check=True, capture_output=True)  # noqa: S603
 
 
 def _to_cached_map(native_graph) -> dict[str, CachedFile]:
@@ -191,6 +191,31 @@ async def test_scan_repository_does_not_starve_event_loop(
 def test_api_scan_endpoint_end_to_end(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from contextlib import contextmanager
+
+    from app.api import routes
+
+    saved = {}
+
+    class FakeStore:
+        def check_repository_cap(self, _root: str) -> None:
+            return None
+
+        def scan_cache(self, _root: str):
+            return {}
+
+        def upsert_repository_graph(self, graph) -> None:
+            saved["graph"] = graph
+
+        def overview(self, repo_path: str | None = None) -> dict:
+            g = saved["graph"]
+            return {"files": len(g.files), "symbols": len(g.symbols), "repo_path": repo_path}
+
+    @contextmanager
+    def fake_neo4j_store():
+        yield FakeStore()
+
+    monkeypatch.setattr(routes, "neo4j_store", fake_neo4j_store)
     monkeypatch.setattr(settings, "allowed_repo_roots_raw", "")
     monkeypatch.setattr(settings, "api_token", None)
     monkeypatch.setattr(jev_client, "enabled", False)
@@ -203,8 +228,9 @@ def test_api_scan_endpoint_end_to_end(
         resp = client.post("/api/scan", json={"path": str(tmp_path), "incremental": False})
         assert resp.status_code == 200
         body = resp.json()
-        assert body["files_indexed"] == 1
-        assert body["symbols_indexed"] == 1
+        assert body["overview"]["files"] == 1
+        assert body["overview"]["symbols"] == 1
+        assert saved["graph"].files[0].churn_count == 1
 
         missing = client.post("/api/scan", json={"path": str(tmp_path / "nope")})
         assert missing.status_code == 400
