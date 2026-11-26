@@ -252,21 +252,21 @@ async def open_main_file(page: Page) -> None:
     await expect(page.locator(".inspector h2")).to_have_text("main.py")
 
 
-async def ask(page: Page, question: str, wait_for_search: bool = False) -> None:
+async def ask(page: Page, question: str, wait_for_search: bool = True) -> None:
     trigger = page.get_by_role("button", name="Search files, symbols, or ask Cartographer...")
     await trigger.click()
     input_box = page.get_by_placeholder("Search files, symbols, or ask Cartographer...")
-    await input_box.fill(question)
     ask_option = page.get_by_text(f'Ask Cartographer: "{question}"')
     if wait_for_search:
         async with page.expect_response(
             lambda response: urlparse(response.url).path == "/api/search"
         ):
-            await expect(ask_option).to_be_visible()
+            await input_box.fill(question)
     else:
-        await expect(ask_option).to_be_visible()
+        await input_box.fill(question)
+    await expect(ask_option).to_be_visible()
     async with page.expect_response(lambda response: urlparse(response.url).path == "/api/query"):
-        await ask_option.click()
+        await input_box.press("Enter")
 
 
 async def test_empty_workspace_and_keyboard_workflow(browser: Browser, url: str) -> None:
