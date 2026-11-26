@@ -14,7 +14,7 @@
 | Additional adversarial native-scanner cases | Not implemented from this draft. Existing native and Python parity coverage was retained; this draft's proposed cases are not claimed as added. |
 | Browser workflow | Implemented under the approved plan with seven isolated scenarios, intercepted APIs, failure/recovery, keyboard, and viewport checks. The draft's screenshot proposal was not part of the final scope. |
 | Live-provider smoke | The explicitly gated command was implemented and tested with fake clients only. No live provider request was made. |
-| Hosted CI result | Not available: the feature branch has not been pushed, so the new GitHub Actions jobs have not run remotely. |
+| Hosted CI result | The `check`, `integration`, and `e2e` jobs all passed for [PR #3](https://github.com/mahinigam/codebase-cartographer/pull/3) (run `45879378037`). |
 | Documentation and local verification | See Task 7 and its final command results in the approved completion plan. |
 
 **Goal:** Add deterministic, layered regression tests and repeatable commands that prove Codebase Cartographer can scan repositories, persist trustworthy graph evidence, and support its core investigation workflow under both normal and failure conditions.

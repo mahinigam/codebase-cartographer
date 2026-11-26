@@ -262,7 +262,7 @@ Verification record:
 - The first `bash ./check.sh` invocation could not find `cargo` because rustup was not on the shell's `PATH`. Re-running with `PATH="$(brew --prefix rustup)/bin:$HOME/.cargo/bin:$PATH"` passed: 10 Rust tests, 159 backend tests with 92.25% coverage (90% minimum), 49 frontend tests, lint, and type checks.
 - The default backend run intentionally skips the two Neo4j cases unless `CARTOGRAPHER_RUN_INTEGRATION=1`; `./scripts/test-integration.sh -v` then passed both cases.
 - `./scripts/test-e2e.sh` passed its production build and all seven browser scenarios. Port 5183 was no longer listening afterward, and no integration Compose project remained. The existing main-repository Compose project was left untouched.
-- The local suite emitted existing Starlette/AnyIO deprecation and Node localStorage experimental warnings. No live provider request was made, and hosted CI has not run because this branch is not pushed.
+- The local suite emitted existing Starlette/AnyIO deprecation and Node localStorage experimental warnings. No live provider request was made. Hosted GitHub Actions run `45879378037` passed all three jobs (`check`, `integration`, and `e2e`).
 
 ## Plan self-review
 
