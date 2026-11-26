@@ -788,6 +788,21 @@ The frontend coverage configuration targets **85% coverage across lines, functio
 bash ./check.sh
 ```
 
+### Extended verification
+
+The default check is deterministic: it uses no external AI provider or persistent database.
+
+```bash
+# Disposable Neo4j graph-persistence tests (Docker required)
+./scripts/test-integration.sh
+
+# Browser critical-path test (one-time browser install)
+cd backend && uv run playwright install chromium
+cd .. && ./scripts/test-e2e.sh
+```
+
+Both extended checks use controlled local fixtures. Live AI-provider smoke checks are intentionally opt-in and are not part of the automated gate.
+
 ### Continuous Integration
 
 GitHub Actions runs the repository's automated test and validation workflow for changes to `main` and pull requests.

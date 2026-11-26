@@ -6,6 +6,7 @@ INTEGRATION_SCRIPT = REPO_ROOT / "scripts" / "test-integration.sh"
 E2E_SCRIPT = REPO_ROOT / "scripts" / "test-e2e.sh"
 CHECK_SCRIPT = REPO_ROOT / "check.sh"
 GITIGNORE = REPO_ROOT / ".gitignore"
+README = REPO_ROOT / "README.md"
 
 
 def test_integration_compose_is_loopback_isolated_and_health_checked() -> None:
@@ -34,3 +35,10 @@ def test_default_gate_stays_credential_and_service_free() -> None:
 
 def test_parallel_coverage_files_are_ignored() -> None:
     assert ".coverage.*" in GITIGNORE.read_text()
+
+
+def test_readme_documents_test_tiers() -> None:
+    readme = README.read_text().lower()
+    for command in ("./check.sh", "./scripts/test-integration.sh", "./scripts/test-e2e.sh"):
+        assert command in readme
+    assert "opt-in" in readme
