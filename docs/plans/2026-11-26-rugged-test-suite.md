@@ -2,6 +2,21 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use subagent-driven-development (recommended) or executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status: superseded.** This was the initial proposal, not the implementation checklist. Its unchecked steps are preserved as historical scope and must not be read as a current progress report. The approved scope and actual task-by-task completion record are in [Rugged Test Suite Completion](./2026-11-26-rugged-suite-completion.md).
+
+## Reconciliation with the completed work
+
+| Area in this draft | Reconciled status |
+| --- | --- |
+| Test tiers and commands | Reworked in the approved plan. The default gate remains service-free; integration and E2E run in separate CI jobs. The original private-network test-runner proposal was not used. |
+| Neo4j persistence | Completed in the approved plan, including public API scan/read/rescan coverage. The older direct-store test remains in place. |
+| Additional API/client boundary cases | Not implemented from this draft; its unchecked cases remain proposals, not completed coverage. |
+| Additional adversarial native-scanner cases | Not implemented from this draft. Existing native and Python parity coverage was retained; this draft's proposed cases are not claimed as added. |
+| Browser workflow | Implemented under the approved plan with seven isolated scenarios, intercepted APIs, failure/recovery, keyboard, and viewport checks. The draft's screenshot proposal was not part of the final scope. |
+| Live-provider smoke | The explicitly gated command was implemented and tested with fake clients only. No live provider request was made. |
+| Hosted CI result | The `check`, `integration`, and `e2e` jobs all passed for [PR #3](https://github.com/mahinigam/codebase-cartographer/pull/3) (run `45879378037`). |
+| Documentation and local verification | See Task 7 and its final command results in the approved completion plan. |
+
 **Goal:** Add deterministic, layered regression tests and repeatable commands that prove Codebase Cartographer can scan repositories, persist trustworthy graph evidence, and support its core investigation workflow under both normal and failure conditions.
 
 **Architecture:** Keep the existing fast unit suite network-free, add a service-backed Neo4j integration layer behind an explicit command, and test the browser workflow through a controlled local API. The default gate remains fast; integration and browser checks are isolated and opt-in so they are reproducible without credentials or persistent data.

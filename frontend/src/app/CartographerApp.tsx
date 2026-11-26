@@ -110,32 +110,28 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
   }
 
   async function refresh(repoScope?: string) {
-    try {
-      const repoData = await getRepositories();
-      setRepositories(repoData.repositories);
-      
-      const resolvedScope = repoScope || activeRepoPath || defaultRepoPath;
-      if (!resolvedScope) return;
+    const repoData = await getRepositories();
+    setRepositories(repoData.repositories);
 
-      if (resolvedScope !== activeRepoPath) setActiveRepoPath(resolvedScope);
-      if (!repoPath) setRepoPath(resolvedScope);
+    const resolvedScope = repoScope || activeRepoPath || defaultRepoPath;
+    if (!resolvedScope) return;
 
-      const [overviewData, graphData, filesData] = await Promise.all([
-        getOverview(resolvedScope),
-        getGraph(resolvedScope, graphLimit), // We will add pathPrefix later
-        getFiles(resolvedScope)
-      ]);
+    if (resolvedScope !== activeRepoPath) setActiveRepoPath(resolvedScope);
+    if (!repoPath) setRepoPath(resolvedScope);
 
-      setOverview({
-        files: overviewData.overview.files ?? 0,
-        symbols: overviewData.overview.symbols ?? 0,
-        avg_score: overviewData.overview.avg_score ?? 0,
-      });
-      setGraph(graphData);
-      setFiles(filesData.files);
-    } catch {
-      // Backend may not be ready
-    }
+    const [overviewData, graphData, filesData] = await Promise.all([
+      getOverview(resolvedScope),
+      getGraph(resolvedScope, graphLimit), // We will add pathPrefix later
+      getFiles(resolvedScope)
+    ]);
+
+    setOverview({
+      files: overviewData.overview.files ?? 0,
+      symbols: overviewData.overview.symbols ?? 0,
+      avg_score: overviewData.overview.avg_score ?? 0,
+    });
+    setGraph(graphData);
+    setFiles(filesData.files);
   }
 
   async function handleScan(path: string, summarize: boolean) {
@@ -168,7 +164,11 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
     setFileDetail(null);
     setImpactMode(false);
     setStatus(`Viewing ${path}`);
-    await refresh(path);
+    try {
+      await refresh(path);
+    } catch (err: unknown) {
+      addToast(err instanceof Error ? err.message : "Failed to load repository");
+    }
   }
 
   // The universal selection action
@@ -199,7 +199,9 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
   }
 
   useEffect(() => {
-    refresh();
+    refresh().catch((err: unknown) => {
+      addToast(err instanceof Error ? err.message : "Failed to load workspace");
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeRepo = repositories.find((r) => r.root_path === activeRepoPath);
