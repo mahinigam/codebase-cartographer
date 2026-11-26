@@ -4,6 +4,11 @@ import React from 'react';
 import { EmptyWorkspace } from './EmptyWorkspace';
 
 describe('EmptyWorkspace', () => {
+  it('gives the repository path input an accessible name', () => {
+    render(<EmptyWorkspace defaultRepoPath="" onScan={vi.fn()} loading={false} />);
+    expect(screen.getByLabelText('Repository path')).not.toBeNull();
+  });
+
   it('covers all paths with and without loading', () => {
     const onScan = vi.fn();
     const { rerender } = render(<EmptyWorkspace defaultRepoPath="/test" onScan={onScan} loading={false} />);

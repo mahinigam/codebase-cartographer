@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from app._native import parse_python_native
-
 from app.models.graph import CodeSymbol, ImportEdge
 
 

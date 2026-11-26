@@ -17,7 +17,11 @@ async def test_scan_write_read_and_rescan_removes_stale_graph_data(
         "service.py",
     ]
     graph = await neo4j_store.graph_slice(repo_path=str(sample_repository))
-    assert {(edge["source"].split(":")[-1], edge["target"].split(":")[-1]) for edge in graph["edges"]} == {
+    edges = {
+        (edge["source"].split(":")[-1], edge["target"].split(":")[-1])
+        for edge in graph["edges"]
+    }
+    assert edges == {
         ("main.py", "service.py")
     }
 

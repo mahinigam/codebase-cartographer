@@ -5,9 +5,9 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from app._native import parse_python_native, safe_snippet_native, scan_repo_native
 from fastapi.testclient import TestClient
 
+from app._native import parse_python_native, safe_snippet_native, scan_repo_native
 from app.core.config import settings
 from app.indexing.scanner import UnsafeRepositoryPath, scan_repository, validate_repo_path
 from app.main import app

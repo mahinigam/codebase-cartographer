@@ -37,6 +37,7 @@ export function EmptyWorkspace({ defaultRepoPath, onScan, loading, repositories 
             <FolderGit2 className="input-icon" size={18} />
             <input
               type="text"
+              aria-label="Repository path"
               value={path}
               onChange={(e) => setPath(e.target.value)}
               placeholder="/Users/you/projects/my-app"
