@@ -256,6 +256,7 @@ async def ask(page: Page, question: str, wait_for_search: bool = True) -> None:
     trigger = page.get_by_role("button", name="Search files, symbols, or ask Cartographer...")
     await trigger.click()
     input_box = page.get_by_placeholder("Search files, symbols, or ask Cartographer...")
+    await expect(input_box).to_have_value("")
     ask_option = page.get_by_text(f'Ask Cartographer: "{question}"')
     if wait_for_search:
         async with page.expect_response(
