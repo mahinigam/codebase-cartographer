@@ -1,15 +1,11 @@
 import asyncio
-import hashlib
-import os
 from pathlib import Path
 
+from app._native import RepositoryTooLargeError, safe_snippet_native, scan_repo_native
 from app.core.config import settings
 from app.core.errors import RepositoryTooLarge
-from app.indexing.discovery import language_for, safe_relative, source_files
-from app.indexing.git_history import file_churn
-from app.indexing.js_parser import parse_js_like
-from app.indexing.python_parser import parse_python
-from app.models.graph import CachedFile, CodeFile, RepositoryGraph
+from app.indexing.python_parser import parse_python  # noqa: F401
+from app.models.graph import CachedFile, CodeFile, CodeSymbol, ImportEdge, RepositoryGraph
 from app.services.jev_client import jev_client
 
 
@@ -37,62 +33,61 @@ async def scan_repository(
 ) -> RepositoryGraph:
     jev_client.reset_call_budget()
     root = validate_repo_path(path_text)
-    churn = file_churn(root)
-    graph = RepositoryGraph(root_path=str(root), name=root.name)
-    paths = source_files(root)
     file_limit = settings.scan_max_files if max_files is None else max_files
-    if file_limit > 0 and len(paths) > file_limit:
-        raise RepositoryTooLarge(
-            f"Repository has {len(paths)} supported source files; limit is {file_limit}."
+    max_file_bytes = max(settings.scan_max_file_bytes, 0)
+
+    try:
+        native_graph = scan_repo_native(
+            str(root),
+            previous_files,
+            max(file_limit, 0),
+            max_file_bytes,
         )
+    except RepositoryTooLargeError as exc:
+        raise RepositoryTooLarge(str(exc)) from exc
 
-    for path in paths:
-        relative = safe_relative(path, root)
-        stat = path.stat()
-        language = language_for(path)
-        cached = previous_files.get(relative) if previous_files else None
-        source: str | None = None
-        content_hash: str | None = None
-
-        if cached and _same_stat_fingerprint(cached.file, stat):
-            _append_cached_file(graph, cached, churn.get(relative, {}), stat)
-            continue
-
-        source = _read_source_head(path, settings.scan_max_file_bytes)
-        content_hash = _content_hash(source)
-        if cached and cached.file.content_hash == content_hash:
-            _append_cached_file(graph, cached, churn.get(relative, {}), stat, content_hash)
-            continue
-
-        loc = len([line for line in source.splitlines() if line.strip()])
-
-        if language == "python":
-            symbols, imports, complexity = parse_python(path, relative, source)
-        elif language in {"javascript", "typescript"}:
-            symbols, imports, complexity = parse_js_like(path, relative, source, language)
-        else:
-            symbols, imports, complexity = [], [], 0
-
-        history = churn.get(relative, {})
-        last_modified = history.get("last_modified")
-        graph.files.append(
+    graph = RepositoryGraph(
+        root_path=native_graph.root_path,
+        name=native_graph.name,
+        files=[
             CodeFile(
-                path=relative,
-                language=language,
-                loc=loc,
-                size_bytes=stat.st_size,
-                mtime_ns=stat.st_mtime_ns,
-                content_hash=content_hash,
-                churn_count=int(history.get("count", 0)),
-                last_modified=last_modified if isinstance(last_modified, str) else None,
-                complexity=complexity,
+                path=f.path,
+                language=f.language,
+                loc=f.loc,
+                size_bytes=f.size_bytes,
+                mtime_ns=f.mtime_ns,
+                content_hash=f.content_hash,
+                churn_count=f.churn_count,
+                last_modified=f.last_modified,
+                complexity=f.complexity,
+                load_bearing_score=f.load_bearing_score,
             )
-        )
-        graph.symbols.extend(symbols)
-        graph.imports.extend(imports)
+            for f in native_graph.files
+        ],
+        symbols=[
+            CodeSymbol(
+                id=s.id,
+                file_path=s.file_path,
+                name=s.name,
+                kind=s.kind,
+                signature=s.signature,
+                start_line=s.start_line,
+                end_line=s.end_line,
+                complexity=s.complexity,
+            )
+            for s in native_graph.symbols
+        ],
+        imports=[
+            ImportEdge(
+                source_path=i.source_path,
+                target=i.target,
+                target_path=i.target_path,
+                line_number=i.line_number,
+            )
+            for i in native_graph.imports
+        ],
+    )
 
-    _resolve_imports(graph)
-    _score_load_bearing_files(graph)
     await _classify_files_with_jev(graph, root)
     await _detect_tests_with_jev(graph, root)
     await _detect_frameworks_with_jev(graph, root)
@@ -102,28 +97,8 @@ async def scan_repository(
 
 
 def _safe_snippet(root: Path, relative: str, limit: int) -> str:
-    """Read a bounded text snippet from a file inside the scanned root.
-
-    Files that resolve outside the root (e.g. an escape symlink) — as well
-    as unreadable paths — contribute no snippet, mirroring the containment
-    guarantee of ``_summarize_file`` and ``source_files``.
-    """
-    try:
-        repo_root = root.resolve()
-        resolved = (root / relative).resolve()
-        if not resolved.is_relative_to(repo_root) or not resolved.is_file():
-            return ""
-        return resolved.read_text(encoding="utf-8", errors="ignore")[:limit]
-    except Exception:
-        return ""
-
-
-def _same_stat_fingerprint(file: CodeFile, stat: os.stat_result) -> bool:
-    return (
-        file.content_hash is not None
-        and file.size_bytes == stat.st_size
-        and file.mtime_ns == stat.st_mtime_ns
-    )
+    """Read a bounded text snippet from a file inside the scanned root."""
+    return safe_snippet_native(str(root), relative, limit)
 
 
 def _read_source_head(path: Path, max_bytes: int) -> str:
@@ -133,148 +108,6 @@ def _read_source_head(path: Path, max_bytes: int) -> str:
     with path.open("rb") as handle:
         data = handle.read(max_bytes)
     return data.decode("utf-8", errors="ignore")
-
-
-def _content_hash(source: str) -> str:
-    return hashlib.sha256(source.encode("utf-8", errors="ignore")).hexdigest()
-
-
-def _append_cached_file(
-    graph: RepositoryGraph,
-    cached: CachedFile,
-    history: dict[str, str | int],
-    stat: os.stat_result,
-    content_hash: str | None = None,
-) -> None:
-    file = cached.file.model_copy(
-        update={
-            "size_bytes": stat.st_size,
-            "mtime_ns": stat.st_mtime_ns,
-            "content_hash": content_hash or cached.file.content_hash,
-            "churn_count": int(history.get("count", cached.file.churn_count)),
-            "last_modified": history.get("last_modified", cached.file.last_modified),
-        }
-    )
-    graph.files.append(file)
-    graph.symbols.extend(cached.symbols)
-    graph.imports.extend(cached.imports)
-
-
-def _resolve_imports(graph: RepositoryGraph) -> None:
-    file_paths = {item.path for item in graph.files}
-    python_modules = _python_module_index(file_paths)
-    js_modules = _js_module_index(file_paths)
-
-    for edge in graph.imports:
-        if edge.target.startswith("./") or edge.target.startswith("../"):
-            edge.target_path = _resolve_relative_module(edge.source_path, edge.target, js_modules)
-        elif edge.target.startswith("."):
-            edge.target_path = _resolve_relative_python_module(
-                edge.source_path, edge.target, python_modules
-            )
-        elif edge.target in python_modules:
-            edge.target_path = python_modules[edge.target]
-        elif edge.target in js_modules:
-            edge.target_path = js_modules[edge.target]
-
-
-def _python_module_index(file_paths: set[str]) -> dict[str, str]:
-    modules: dict[str, str] = {}
-    for path in sorted(file_paths, key=len):
-        if not path.endswith(".py"):
-            continue
-        module = path[:-3].replace("/", ".")
-        _add_module_aliases(modules, module, path)
-        if module.endswith(".__init__"):
-            _add_module_aliases(modules, module.removesuffix(".__init__"), path)
-    return modules
-
-
-def _add_module_aliases(modules: dict[str, str], module: str, path: str) -> None:
-    parts = module.split(".")
-    for index in range(len(parts)):
-        alias = ".".join(parts[index:])
-        modules.setdefault(alias, path)
-
-
-def _js_module_index(file_paths: set[str]) -> dict[str, str]:
-    modules: dict[str, str] = {}
-    for path in sorted(file_paths, key=len):
-        if "." not in path:
-            continue
-        stem = path.rsplit(".", 1)[0]
-        modules.setdefault(stem, path)
-        modules.setdefault(f"./{stem}", path)
-    return modules
-
-
-_JS_SUFFIXES = (".tsx", ".ts", ".jsx", ".js", ".mjs", ".cjs")
-
-
-def _resolve_relative_module(source_path: str, target: str, modules: dict[str, str]) -> str | None:
-    source_parent = Path(source_path).parent
-    normalized = Path(os.path.normpath(source_parent / target)).as_posix()
-    while normalized.startswith("./"):
-        normalized = normalized[2:]
-    if normalized == ".." or normalized.startswith("../"):
-        return None
-    return _lookup_js_module(normalized, modules)
-
-
-def _lookup_js_module(normalized: str, modules: dict[str, str]) -> str | None:
-    stems = [normalized]
-    for suffix in _JS_SUFFIXES:
-        if normalized.endswith(suffix):
-            stems.append(normalized[: -len(suffix)])
-            break
-    for stem in stems:
-        for candidate in (stem, f"{stem}/index"):
-            resolved = modules.get(candidate)
-            if resolved:
-                return resolved
-    return None
-
-
-def _resolve_relative_python_module(
-    source_path: str, target: str, modules: dict[str, str]
-) -> str | None:
-    leading_dots = len(target) - len(target.lstrip("."))
-    module_tail = target.lstrip(".")
-    source_parts = Path(source_path).with_suffix("").parts
-    base_parts = source_parts[: max(len(source_parts) - leading_dots, 0)]
-    candidate = ".".join([*base_parts, module_tail]).strip(".")
-    return modules.get(candidate)
-
-
-def _score_load_bearing_files(graph: RepositoryGraph) -> None:
-    fan_in = {file.path: 0 for file in graph.files}
-    fan_out = {file.path: 0 for file in graph.files}
-    for edge in graph.imports:
-        fan_out[edge.source_path] = fan_out.get(edge.source_path, 0) + 1
-        if edge.target_path:
-            fan_in[edge.target_path] = fan_in.get(edge.target_path, 0) + 1
-
-    max_complexity = max((file.complexity for file in graph.files), default=1) or 1
-    max_churn = max((file.churn_count for file in graph.files), default=1) or 1
-    max_fan_in = max(fan_in.values(), default=1) or 1
-
-    for file in graph.files:
-        fan_in_score = fan_in.get(file.path, 0) / max_fan_in
-        # Dampen fan-in weight for trivial utility files (small + simple).
-        # Without this, a 10-line re-export or UI atom imported everywhere
-        # would outrank genuinely load-bearing modules.
-        if file.loc < 30 and file.complexity <= 1:
-            fan_in_score *= 0.3
-        file.load_bearing_score = round(
-            100
-            * (
-                0.45 * fan_in_score
-                + 0.25 * (file.complexity / max_complexity)
-                + 0.2 * (file.churn_count / max_churn)
-                + 0.1 * min(fan_out.get(file.path, 0) / 10, 1)
-            ),
-            2,
-        )
 
 
 async def _classify_files_with_jev(graph: RepositoryGraph, root: Path) -> None:

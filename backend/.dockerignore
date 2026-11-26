@@ -1,0 +1,12 @@
+.venv/
+target/
+wheels/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.pyc
+*.pyo
+*.so
+*.pyd
+.git/
