@@ -185,3 +185,66 @@ pub fn score_load_bearing_files(files: &mut [IndexedFile], imports: &[IndexedImp
         file.load_bearing_score = (raw * 100.0).round() / 100.0;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mk_file(path: &str, loc: usize, complexity: usize, churn: i64) -> IndexedFile {
+        IndexedFile {
+            path: path.to_string(),
+            language: "typescript".to_string(),
+            loc,
+            size_bytes: 100,
+            mtime_ns: 1,
+            content_hash: "abc".to_string(),
+            churn_count: churn,
+            last_modified: None,
+            complexity,
+            load_bearing_score: 0.0,
+        }
+    }
+
+    #[test]
+    fn resolves_relative_js_and_blocks_escape() {
+        let files = vec![
+            mk_file("src/a/main.ts", 50, 3, 1),
+            mk_file("src/lib/index.ts", 10, 1, 0),
+        ];
+        let mut imports = vec![
+            IndexedImport {
+                source_path: "src/a/main.ts".to_string(),
+                target: "../lib".to_string(),
+                target_path: None,
+                line_number: Some(1),
+            },
+            IndexedImport {
+                source_path: "src/a/main.ts".to_string(),
+                target: "../../../../outside".to_string(),
+                target_path: None,
+                line_number: Some(2),
+            },
+        ];
+        resolve_imports(&files, &mut imports);
+        assert_eq!(imports[0].target_path.as_deref(), Some("src/lib/index.ts"));
+        assert_eq!(imports[1].target_path, None);
+    }
+
+    #[test]
+    fn dampens_trivial_utility_fan_in_score() {
+        let mut files = vec![
+            mk_file("src/tiny.ts", 10, 1, 0),
+            mk_file("src/core.ts", 200, 10, 5),
+        ];
+        let imports = vec![IndexedImport {
+            source_path: "src/core.ts".to_string(),
+            target: "./tiny".to_string(),
+            target_path: Some("src/tiny.ts".to_string()),
+            line_number: Some(1),
+        }];
+        score_load_bearing_files(&mut files, &imports);
+        assert!(files[1].load_bearing_score > files[0].load_bearing_score);
+        // 0.45 * 0.3 * 100 = 13.5 + 0.25 * 0.1 * 100 = 2.5 => 16.0
+        assert_eq!(files[0].load_bearing_score, 16.0);
+    }
+}

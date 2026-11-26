@@ -147,3 +147,67 @@ pub fn safe_snippet(root: &Path, relative: &str, limit: usize) -> String {
     let text = String::from_utf8_lossy(&buf);
     text.chars().take(limit).collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::symlink;
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("cartographer_disc_{name}_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn prunes_ignored_dirs_and_filters_extensions() {
+        let root = temp_dir("prune");
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::create_dir_all(root.join("node_modules/pkg")).unwrap();
+        fs::create_dir_all(root.join(".git/objects")).unwrap();
+        fs::create_dir_all(root.join(".venv/lib")).unwrap();
+
+        fs::write(root.join("src/app.py"), "x = 1\n").unwrap();
+        fs::write(root.join("src/ui.tsx"), "export const A = () => <div />;\n").unwrap();
+        fs::write(root.join("README.md"), "# docs\n").unwrap();
+        fs::write(root.join("node_modules/pkg/index.js"), "module.exports = 1;\n").unwrap();
+        fs::write(root.join(".git/objects/a.py"), "ignored\n").unwrap();
+        fs::write(root.join(".venv/lib/site.py"), "ignored\n").unwrap();
+
+        let found = discover_source_files(&root);
+        let rels: Vec<&str> = found.iter().map(|f| f.rel_path.as_str()).collect();
+        assert_eq!(rels, vec!["src/app.py", "src/ui.tsx"]);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn blocks_escape_and_broken_symlinks_but_allows_in_root() {
+        let parent = temp_dir("sym");
+        let root = parent.join("repo");
+        fs::create_dir_all(&root).unwrap();
+        let outside = parent.join("secret.py");
+        fs::write(&outside, "SECRET = 'nope'\n").unwrap();
+        fs::write(root.join("ok.py"), "print(1)\n").unwrap();
+
+        symlink(&outside, root.join("escape.py")).unwrap();
+        symlink(parent.join("does_not_exist.py"), root.join("broken.py")).unwrap();
+        symlink(root.join("ok.py"), root.join("alias.py")).unwrap();
+
+        let found = discover_source_files(&root);
+        let rels: Vec<&str> = found.iter().map(|f| f.rel_path.as_str()).collect();
+        assert_eq!(rels, vec!["alias.py", "ok.py"]);
+        assert_eq!(safe_snippet(&root, "escape.py", 100), "");
+        assert_eq!(safe_snippet(&root, "../secret.py", 100), "");
+        assert_eq!(safe_snippet(&root, "ok.py", 100), "print(1)\n");
+        let _ = fs::remove_dir_all(&parent);
+    }
+
+    #[test]
+    fn safe_snippet_handles_multibyte_utf8_cleanly() {
+        let root = temp_dir("utf8");
+        fs::write(root.join("uni.py"), "🚀✨🔥alpha").unwrap();
+        assert_eq!(safe_snippet(&root, "uni.py", 3), "🚀✨🔥");
+        let _ = fs::remove_dir_all(&root);
+    }
+}

@@ -2,20 +2,24 @@ use crate::models::{IndexedImport, IndexedSymbol};
 use std::path::Path;
 use tree_sitter::{Language, Node, Parser};
 
-fn is_complexity_node(kind: &str) -> bool {
-    matches!(
-        kind,
+fn is_complexity_node(node: Node<'_>, source: &[u8]) -> bool {
+    match node.kind() {
         "if_statement"
-            | "for_statement"
-            | "for_in_statement"
-            | "for_of_statement"
-            | "while_statement"
-            | "do_statement"
-            | "switch_statement"
-            | "catch_clause"
-            | "conditional_expression"
-            | "logical_expression"
-    )
+        | "for_statement"
+        | "for_in_statement"
+        | "for_of_statement"
+        | "while_statement"
+        | "do_statement"
+        | "switch_statement"
+        | "catch_clause"
+        | "conditional_expression"
+        | "ternary_expression"
+        | "logical_expression" => true,
+        "binary_expression" => node
+            .child_by_field_name("operator")
+            .is_some_and(|op| matches!(node_text(op, source), "&&" | "||" | "??")),
+        _ => false,
+    }
 }
 
 fn node_text<'a>(node: Node<'_>, source: &'a [u8]) -> &'a str {
@@ -58,7 +62,7 @@ pub fn parse_js_like(
     let mut stack = vec![tree.root_node()];
     while let Some(node) = stack.pop() {
         let kind = node.kind();
-        if is_complexity_node(kind) {
+        if is_complexity_node(node, source_bytes) {
             complexity += 1;
         }
 
@@ -171,4 +175,33 @@ pub fn parse_js_like(
     }
 
     (symbols, imports, complexity)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_tsx_jsx_arrows_classes_and_require() {
+        let src = r#"
+import React from 'react';
+const fs = require("fs");
+export class Widget {}
+export function render(ok: boolean) {
+  return ok ? <div>hi</div> : null;
+}
+const helper = async () => {
+  if (true && false) { return 1; }
+  return 0;
+};
+"#;
+        let mut parser = Parser::new();
+        let (syms, imps, comp) =
+            parse_js_like(Path::new("Widget.tsx"), "Widget.tsx", src, Some("typescript"), &mut parser);
+        let names: Vec<&str> = syms.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["Widget", "render", "helper"]);
+        let targets: Vec<&str> = imps.iter().map(|i| i.target.as_str()).collect();
+        assert_eq!(targets, vec!["react", "fs"]);
+        assert!(comp >= 4);
+    }
 }

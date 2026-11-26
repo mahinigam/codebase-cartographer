@@ -71,3 +71,57 @@ pub fn file_churn(root: &Path) -> FxHashMap<String, ChurnEntry> {
 
     churn
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use git2::Signature;
+    use std::fs;
+    use std::path::PathBuf;
+
+    #[test]
+    fn non_git_directory_returns_empty_churn() {
+        let dir = std::env::temp_dir().join(format!("cartographer_nogit_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        assert!(file_churn(&dir).is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn counts_commits_and_tracks_last_modified() {
+        let dir: PathBuf =
+            std::env::temp_dir().join(format!("cartographer_git_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let repo = Repository::init(&dir).unwrap();
+        let sig = Signature::now("Test", "test@example.com").unwrap();
+
+        fs::write(dir.join("a.py"), "x = 1\n").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(Path::new("a.py")).unwrap();
+        idx.write().unwrap();
+        let tree_id = idx.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let c1 = repo
+            .commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
+            .unwrap();
+
+        fs::write(dir.join("a.py"), "x = 2\n").unwrap();
+        fs::write(dir.join("b.ts"), "export const b = 1;\n").unwrap();
+        let mut idx2 = repo.index().unwrap();
+        idx2.add_path(Path::new("a.py")).unwrap();
+        idx2.add_path(Path::new("b.ts")).unwrap();
+        idx2.write().unwrap();
+        let tree_id2 = idx2.write_tree().unwrap();
+        let tree2 = repo.find_tree(tree_id2).unwrap();
+        let p1 = repo.find_commit(c1).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "second", &tree2, &[&p1])
+            .unwrap();
+
+        let churn = file_churn(&dir);
+        assert_eq!(churn.get("a.py").map(|e| e.count), Some(2));
+        assert_eq!(churn.get("b.ts").map(|e| e.count), Some(1));
+        assert!(!churn["a.py"].last_modified.is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+}

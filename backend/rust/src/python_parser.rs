@@ -205,3 +205,42 @@ pub fn parse_python(
 
     (symbols, imports, total_complexity)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extracts_async_typed_functions_classes_imports_and_complexity() {
+        let src = r#"
+import os, sys as s
+from ..core.config import Settings
+
+class Engine:
+    async def run(self, x: int, y: str = "a"):
+        if x > 0 and y:
+            for i in range(x):
+                pass
+        elif x < 0:
+            return -1
+        return 0
+"#;
+        let mut parser = Parser::new();
+        let (syms, imps, comp) = parse_python("pkg/eng.py", src, &mut parser);
+        assert_eq!(syms.len(), 2);
+        assert_eq!(syms[0].kind, "class");
+        assert_eq!(syms[0].signature.as_deref(), Some("class Engine"));
+        assert_eq!(syms[1].kind, "function");
+        assert_eq!(syms[1].signature.as_deref(), Some("async def run(self, x, y)"));
+        assert!(comp >= 5);
+        let targets: Vec<&str> = imps.iter().map(|i| i.target.as_str()).collect();
+        assert_eq!(targets, vec!["os", "sys", "..core.config"]);
+    }
+
+    #[test]
+    fn syntax_error_or_truncated_def_returns_empty() {
+        let mut parser = Parser::new();
+        assert_eq!(parse_python("bad.py", "def run():", &mut parser).0.len(), 0);
+        assert_eq!(parse_python("bad.py", "class Broken(", &mut parser).0.len(), 0);
+    }
+}
