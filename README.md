@@ -862,16 +862,16 @@ Ollama can optionally run on the host and provide local generation/embedding fal
 ## 1. Configure environment
 
 ```bash
-cp .env.example .env
+./scripts/setup.sh
 ```
 
-Configure the providers you intend to use.
+This copies `.env.example` to `.env` (if missing) and generates a random
+`NEO4J_PASSWORD` if one is not already set. Configure any AI providers you intend
+to use in `.env` (or use a local Ollama setup).
 
-Local development requires Neo4j credentials: generate a password once (for
-example `openssl rand -base64 24`) and set `NEO4J_PASSWORD` in `.env`. The
-compose file fails fast if it is missing — no default credential ships with
-the repository. AI features require the corresponding provider credentials or
-a local Ollama setup.
+> **Troubleshooting:** If you change `NEO4J_PASSWORD` in `.env` after Neo4j has
+> already been initialized, run `docker compose down -v` to reset the
+> `neo4j_data` volume.
 
 ## 2. Start Neo4j
 
