@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -104,6 +105,18 @@ def test_ci_installs_pinned_rust_before_backend_sync() -> None:
     contents = CI_WORKFLOW.read_text()
     assert "dtolnay/rust-toolchain@1.94.0" in contents
     assert contents.index("dtolnay/rust-toolchain@1.94.0") < contents.index("uv sync")
+
+
+def test_ci_runs_integration_in_a_separate_credential_free_job() -> None:
+    contents = CI_WORKFLOW.read_text()
+    match = re.search(
+        r"(?ms)^  integration:\n(.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)",
+        contents,
+    )
+    assert match is not None
+    integration_job = match.group(1)
+    assert "run: ./scripts/test-integration.sh" in integration_job
+    assert "secrets." not in integration_job
 
 
 def test_parallel_coverage_files_are_ignored() -> None:

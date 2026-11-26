@@ -71,8 +71,8 @@ The public API already satisfies these behaviors, so this is a coverage addition
 
 **Files:** Modify `.github/workflows/ci.yml`.
 
-- [ ] Add an `integration` job on `ubuntu-latest` with checkout, Python 3.12, Rust 1.94.0, `uv`, and `cd backend && uv sync`; keep credentials out of the job.
-- [ ] Use these job actions in order; run the existing script from the repository root after installing the backend:
+- [x] Add an `integration` job on `ubuntu-latest` with checkout, Python 3.12, Rust 1.94.0, `uv`, and `cd backend && uv sync`; keep credentials out of the job.
+- [x] Use these job actions in order; run the existing script from the repository root after installing the backend:
 
 ```yaml
 integration:
@@ -87,10 +87,10 @@ integration:
     - run: ./scripts/test-integration.sh
 ```
 
-- [ ] Run `./scripts/test-integration.sh` from the repository root. The script owns its Compose project, wait-for-health behavior, test environment, and cleanup trap.
-- [ ] Keep this job separate from `check`; do not add Docker startup to `check.sh`. Let CI display independent quality and integration outcomes.
-- [ ] Run `git diff --check` and inspect the workflow to confirm both `push` to `main` and `pull_request` triggers cover the new job. On GitHub, expect a separate `integration` check.
-- [ ] Commit as `ci: run Neo4j integration tests separately`.
+- [x] Run `./scripts/test-integration.sh` from the repository root. The script owns its Compose project, wait-for-health behavior, test environment, and cleanup trap.
+- [x] Keep this job separate from `check`; do not add Docker startup to `check.sh`. Let CI display independent quality and integration outcomes.
+- [x] Run `git diff --check` and inspect the workflow to confirm both `push` to `main` and `pull_request` triggers cover the new job. On GitHub, expect a separate `integration` check after the branch is pushed.
+- [x] Commit as `ci: run Neo4j integration tests separately`.
 
 ### Task 4: Expand browser workflow and failure coverage
 
