@@ -760,52 +760,58 @@ These three mechanisms work together to keep the system practical as repository 
 
 # Development & Testing
 
-The project includes backend and frontend test suites covering core indexing, graph, API, analysis, and UI behavior.
+The test tiers progress from fast, service-free checks to isolated Neo4j and browser integration. Providers are mocked in all automated tiers.
 
-### Backend
+### Default local gate
 
-- `cargo test` (Rust core unit tests for discovery, Git churn, parsers, and resolver)
-- pytest
-- pytest-asyncio
-- pytest-cov
-- Ruff
-- mypy
-
-The backend test suite is configured with a **90% coverage floor**.
-
-### Frontend
-
-- Vitest
-- React Testing Library
-- V8 coverage
-- TypeScript checking
-
-The frontend coverage configuration targets **85% coverage across lines, functions, branches, and statements**.
-
-### Run local checks
+Run the normal local checks:
 
 ```bash
 bash ./check.sh
 ```
 
-### Extended verification
+This runs Rust unit tests, backend pytest with the **90% coverage floor**, Ruff, mypy, frontend Vitest with the **85% coverage target**, and TypeScript checking. It does not start Docker services or make AI-provider requests.
 
-The default check is deterministic: it uses no external AI provider or persistent database.
+### Neo4j integration
 
 ```bash
-# Disposable Neo4j graph-persistence tests (Docker required)
+# Requires Docker Engine and Docker Compose.
 ./scripts/test-integration.sh
-
-# Browser critical-path test (one-time browser install)
-cd backend && uv run playwright install chromium
-cd .. && ./scripts/test-e2e.sh
 ```
 
-Both extended checks use controlled local fixtures. Live AI-provider smoke checks are intentionally opt-in and are not part of the automated gate.
+This starts a uniquely named disposable Neo4j service, runs direct-store and public-API scan/read/rescan tests against temporary repositories, and removes its Compose resources on exit. GitHub Actions runs it in the separate `integration` job.
+
+### Browser E2E
+
+Install Chromium once, then run the production-build browser suite:
+
+```bash
+(cd backend && uv run playwright install chromium)
+./scripts/test-e2e.sh
+```
+
+Port `5183` must be available. The suite intercepts API requests with controlled fixtures and covers empty/loading states, scan and recovery flows, graph/file/risk inspection, questions and evidence, keyboard focus, and horizontal overflow at mobile, tablet, and desktop viewport sizes. It owns and stops its frontend server. GitHub Actions runs it in the separate `e2e` job and installs Chromium system dependencies.
 
 ### Continuous Integration
 
-GitHub Actions runs the repository's automated test and validation workflow for changes to `main` and pull requests.
+For pushes to `main` and pull requests, GitHub Actions defines three independent jobs: `check`, `integration`, and `e2e`. Their results are reported separately; the service-backed and browser tiers do not slow or add dependencies to the default local gate.
+
+### Optional live-provider smoke
+
+The provider smoke command is local-only and **never runs in CI**. It requires the explicit `RUN_LIVE_PROVIDER_SMOKE=1` opt-in, sends one direct request with a 45-second timeout, and may use network access or incur provider charges. Set the required provider configuration securely in your shell before running it:
+
+```bash
+# Gemini: provide GEMINI_API_KEY in the environment.
+RUN_LIVE_PROVIDER_SMOKE=1 LLM_PROVIDER=gemini \
+  ./scripts/test-live-provider-smoke.sh
+
+# Or Ollama: provide the URL of the local server.
+RUN_LIVE_PROVIDER_SMOKE=1 LLM_PROVIDER=ollama \
+  OLLAMA_BASE_URL=http://localhost:11434 \
+  ./scripts/test-live-provider-smoke.sh
+```
+
+This smoke check is intentionally excluded from `check.sh`, integration tests, browser tests, and CI. The automated test suite uses fake provider clients and does not send live requests.
 
 ---
 
@@ -990,7 +996,8 @@ codebase-cartographer/
 │
 ├── scripts/
 │   ├── test-e2e.sh
-│   └── test-integration.sh
+│   ├── test-integration.sh
+│   └── test-live-provider-smoke.sh # Explicitly gated; one live request only
 │
 ├── docker-compose.integration.yml
 │

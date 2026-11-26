@@ -155,9 +155,20 @@ def test_parallel_coverage_files_are_ignored() -> None:
 
 def test_readme_documents_test_tiers() -> None:
     readme = README.read_text().lower()
-    for command in ("./check.sh", "./scripts/test-integration.sh", "./scripts/test-e2e.sh"):
+    for command in (
+        "bash ./check.sh",
+        "./scripts/test-integration.sh",
+        "./scripts/test-e2e.sh",
+        "uv run playwright install chromium",
+        "./scripts/test-live-provider-smoke.sh",
+    ):
         assert command in readme
     assert "opt-in" in readme
+    assert "providers are mocked" in readme
+    assert "three independent jobs" in readme
+    for job in ("`check`", "`integration`", "`e2e`"):
+        assert job in readme
+    assert "never runs in ci" in readme
 
 
 @pytest.mark.parametrize(
@@ -333,5 +344,6 @@ def test_live_provider_smoke_rejects_an_empty_provider_response(
 
 
 def test_live_provider_smoke_is_not_part_of_automatic_gates() -> None:
+    assert LIVE_PROVIDER_SMOKE_SCRIPT.exists()
     assert "test-live-provider-smoke.sh" not in CHECK_SCRIPT.read_text()
     assert "test-live-provider-smoke.sh" not in CI_WORKFLOW.read_text()

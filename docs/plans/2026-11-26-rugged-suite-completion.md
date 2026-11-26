@@ -46,7 +46,7 @@
 - [x] Add an integration case using `fastapi.testclient.TestClient(app)` and the existing `neo4j_store` fixture with the temporary two-file repository. The fixture clears Neo4j and disables Jev; this keeps the API scan isolated and prevents provider calls. POST `/api/scan` with `{"path": str(sample_repository), "summarize": false, "incremental": false}` and assert HTTP 200.
 - [x] Read `/api/files`, `/api/overview`, and `/api/graph` with the returned repository root path; assert both file paths and the `main.py` → `service.py` edge are returned from Neo4j.
 - [x] Delete `service.py`, scan again, and assert the public file and graph endpoints no longer expose the stale file or edge.
-- [ ] Keep the fixture assertions tied to public response shapes:
+- [x] Keep the fixture assertions tied to public response shapes:
 
 ```python
 files = client.get("/api/files", params={"repo_path": str(sample_repository)}).json()["files"]
@@ -250,12 +250,19 @@ The Gemini and Ollama call paths were exercised using a fake `LLMClient`; no liv
 
 **Files:** Modify `README.md`, `backend/tests/test_test_commands.py`, and `docs/plans/2026-11-26-rugged-test-suite.md`.
 
-- [ ] Assert that the live-provider script exists, refuses a missing opt-in flag, and is absent from `check.sh`; assert that README documents the three CI jobs and the provider smoke warning/command.
-- [ ] Update README with each test tier's prerequisites, exact command, behavior covered, and whether it runs in CI. State that live smoke can make a real provider request and is never part of CI.
-- [ ] Reconcile the original rugged-suite plan checkboxes with what was actually completed; leave unexecuted live smoke clearly marked opt-in and do not claim a hosted job passed before GitHub reports it.
-- [ ] Run `bash ./check.sh`, `./scripts/test-integration.sh -v`, and `./scripts/test-e2e.sh`. Expect default checks plus Cargo, real Neo4j assertions, and all browser cases to pass; provider smoke remains uncalled.
-- [ ] Run `git diff --check`, inspect `git status --short`, and verify generated coverage, server logs, and Compose volumes are not tracked or left running.
-- [ ] Commit as `docs: document rugged suite execution tiers`.
+- [x] Assert that the live-provider script exists, refuses a missing opt-in flag, and is absent from `check.sh`; assert that README documents the three CI jobs and the provider smoke warning/command.
+- [x] Update README with each test tier's prerequisites, exact command, behavior covered, and whether it runs in CI. State that live smoke can make a real provider request and is never part of CI.
+- [x] Reconcile the original rugged-suite plan checkboxes with what was actually completed; leave unexecuted live smoke clearly marked opt-in and do not claim a hosted job passed before GitHub reports it.
+- [x] Run `bash ./check.sh`, `./scripts/test-integration.sh -v`, and `./scripts/test-e2e.sh`. Expect default checks plus Cargo, real Neo4j assertions, and all browser cases to pass; provider smoke remains uncalled.
+- [x] Run `git diff --check`, inspect `git status --short`, and verify generated coverage, server logs, and Compose volumes are not tracked or left running.
+- [x] Commit as `docs: document rugged suite execution tiers`.
+
+Verification record:
+
+- The first `bash ./check.sh` invocation could not find `cargo` because rustup was not on the shell's `PATH`. Re-running with `PATH="$(brew --prefix rustup)/bin:$HOME/.cargo/bin:$PATH"` passed: 10 Rust tests, 159 backend tests with 92.25% coverage (90% minimum), 49 frontend tests, lint, and type checks.
+- The default backend run intentionally skips the two Neo4j cases unless `CARTOGRAPHER_RUN_INTEGRATION=1`; `./scripts/test-integration.sh -v` then passed both cases.
+- `./scripts/test-e2e.sh` passed its production build and all seven browser scenarios. Port 5183 was no longer listening afterward, and no integration Compose project remained. The existing main-repository Compose project was left untouched.
+- The local suite emitted existing Starlette/AnyIO deprecation and Node localStorage experimental warnings. No live provider request was made, and hosted CI has not run because this branch is not pushed.
 
 ## Plan self-review
 
