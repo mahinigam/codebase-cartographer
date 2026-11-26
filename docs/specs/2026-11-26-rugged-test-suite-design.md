@@ -1,64 +1,74 @@
-# Rugged Test Suite Design
+# Rugged Test Suite Completion Design
 
 ## Goal
 
-Protect Codebase Cartographer's core promise: transform a repository into trustworthy structural evidence that users can inspect and query, without corrupting data, escaping configured boundaries, or failing unclearly under hostile input and dependency failure.
+Protect Codebase Cartographer's core promise: scan repositories into trustworthy structural evidence, persist and expose that evidence correctly, and keep the investigation workflow understandable when inputs or dependencies fail.
 
-## Scope
+The existing layered test-suite work is a foundation, not a finished all-angles regression suite. This design completes its missing execution and coverage layers without changing production behavior unless a test demonstrates a real defect.
 
-The test strategy will harden the existing Rust, Python, API, React, and deployment checks. It will not make live AI-provider calls part of the default suite. An explicitly opt-in smoke check may validate configured providers for deployers who choose to run it.
+## Principles
+
+- Keep the default local gate deterministic, service-free, and credential-free.
+- Run real Neo4j and browser checks in separate GitHub Actions jobs on pushes to `main` and pull requests; do not make `check.sh` start services.
+- Mock AI providers in normal, integration, and browser tests.
+- Keep any paid/live provider smoke test explicitly opt-in, local-only, bounded, and incapable of running accidentally.
+- Prefer observable public behavior and failure outcomes over implementation-detail assertions.
+- Use temporary repositories, isolated disposable services, deterministic fixtures, bounded waits, and guaranteed cleanup.
+- Preserve existing public APIs and user behavior; make only narrowly necessary production fixes exposed by tests.
 
 ## Test Layers
 
-### Fast checks
+### Default quality gate
 
-The default developer gate remains network-free and deterministic:
+`bash ./check.sh` remains the fast local command and CI's unit/contract job. It covers backend pytest with the existing coverage floor, Ruff, mypy, frontend Vitest coverage, and TypeScript. It must also run the Rust crate's unit tests so native parser, discovery, resolver, and Git-history tests are not silently omitted. It must not require Docker, Chromium, external network services, or provider credentials.
 
-- Rust unit tests for parsing, discovery, dependency resolution, metrics, and containment.
-- Python unit tests for configuration, orchestration, graph transformation, and provider error handling.
-- FastAPI route tests for validation, authentication/configuration boundaries, response schemas, and error mapping.
-- React component and client tests for rendering, interaction, accessibility-facing semantics, and API-client contracts.
+### Neo4j integration
 
-### Service-backed integration checks
+The separate integration command owns a disposable Neo4j service and always removes its containers and volumes, including after test failures. Tests use temporary repositories and the production scanner/store path, then verify persisted graph data through the public read path, idempotent rescans, stale-data removal, and cleanup/isolation. Add relevant failure assertions only where they can be deterministic without damaging developer data. External AI calls remain disabled or mocked.
 
-An opt-in integration command will use disposable services and temporary repositories to verify the complete backend data path:
+GitHub Actions runs this command in an independent job. The ordinary quality job remains independently runnable and reports failures separately.
 
-1. Scan a representative repository fixture.
-2. Persist files, symbols, relationships, and metrics in Neo4j.
-3. Read the graph through the public API.
-4. Verify idempotent rescans and cleanup/isolation between test cases.
+### Browser end-to-end
 
-External AI calls remain mocked. Tests assert that timeout, rate-limit, malformed-response, and unavailable-provider conditions become safe, actionable application results.
+The separate E2E command builds and starts the production frontend locally and runs Chromium against deterministic, intercepted API responses. Cover:
 
-### Browser critical paths
+- initial empty and loading states;
+- successful repository scan, graph/file/risk inspection, and question/answer display;
+- scan, graph/file, and question failures followed by a recoverable successful action;
+- unexpected page errors and failed requests;
+- keyboard access to primary actions and visible focus;
+- no horizontal overflow at mobile, tablet, and desktop viewport sizes.
 
-Browser tests will run against the frontend and a controlled API fixture. They cover:
+All API routes are intercepted; the browser suite must not depend on a live backend, database, or AI provider. GitHub Actions runs it in an independent job with the required browser installed.
 
-- initial, loading, empty, failure, and recovered workspace states;
-- selecting a repository and completing a scan;
-- graph navigation and file/risk inspection;
-- architecture question submission and rendered answer/evidence;
-- keyboard-operable core controls, console errors, failed requests, and responsive overflow at mobile, tablet, and desktop sizes.
+### Live-provider smoke
 
-## Adversarial Coverage
+An explicitly invoked local smoke check may make one bounded request to a provider selected through the application's existing configuration. It must require an explicit opt-in flag and the provider's configured credentials, never run in default checks or CI, avoid printing secrets or full provider responses, and state clearly that a real external call (and possible cost) will occur. If no safe provider-independent entry point exists, document that limitation rather than duplicating provider setup logic.
 
-Each relevant layer will use fixtures for empty and large repositories, malformed or unsupported source, unusual Unicode paths, cyclic/missing imports, broken Git state, unreadable entries, nested repositories, and symlink containment attempts. API tests will include invalid and oversized payloads, missing configuration, unavailable Neo4j, and dependency timeouts. Tests will use fixed fixtures and explicit resource cleanup rather than wall-clock waits or shared mutable state.
+## CI and Commands
 
-## Execution Model
+GitHub Actions runs three independent jobs for pushes to `main` and pull requests:
 
-The project will expose clear commands:
+1. Default quality gate (`bash ./check.sh`).
+2. Neo4j integration (`./scripts/test-integration.sh`).
+3. Browser E2E (`./scripts/test-e2e.sh`).
 
-- `check.sh`: deterministic unit, contract, lint, type, coverage, and build checks suitable for normal development and CI.
-- an integration command: starts or targets only the required local services and runs service-backed tests.
-- an E2E command: starts controlled frontend/backend instances and runs headless browser tests.
-- an optional live-provider smoke command: disabled unless a deployer supplies explicit credentials and opt-in configuration.
+Local extended commands remain opt-in and independently runnable. The default gate never invokes either extended script.
 
-The final delivery gate runs all applicable commands and records the actual results. Tests must not require external internet access, persistent developer data, or paid-provider credentials by default.
+## Completion Criteria
 
-## Success Criteria
+- Rust unit tests execute in the default quality gate.
+- The default gate passes without Docker, a browser install, network dependencies, or provider credentials.
+- Integration assertions exercise persisted data and public reads, and the isolated service is cleaned up on both success and failure.
+- Browser assertions cover the specified happy, empty/loading, failure/recovery, keyboard, and viewport behaviors using intercepted API fixtures.
+- Both extended jobs run in CI and are also reproducible locally through their documented commands.
+- Provider smoke calls are opt-in only and never run during CI.
+- The full local verification matrix passes, with expected skips and any environmental limitations reported explicitly.
+- Documentation and the implementation checklist accurately distinguish completed, optional, and non-run checks.
 
-- A developer can run deterministic tests locally without services or API credentials.
-- Service-backed checks prove graph persistence and public read paths against isolated Neo4j data.
-- Browser checks prove that the user can complete the primary investigation workflow and receive clear failure feedback.
-- Critical safety and failure modes have named regression tests.
-- Existing behavior remains covered and all project quality gates pass before changes are declared complete.
+## Non-goals
+
+- Changing production APIs or user-facing functionality without a test-proven defect.
+- Requiring paid-provider access for development or CI.
+- Making every optional test part of the default `check.sh`.
+- Maximizing line coverage at the expense of meaningful behavioral assertions.
