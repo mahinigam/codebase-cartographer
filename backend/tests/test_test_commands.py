@@ -9,10 +9,10 @@ CHECK_SCRIPT = REPO_ROOT / "check.sh"
 GITIGNORE = REPO_ROOT / ".gitignore"
 
 
-def test_integration_compose_is_isolated_and_health_checked() -> None:
+def test_integration_compose_is_loopback_isolated_and_health_checked() -> None:
     assert INTEGRATION_COMPOSE.exists()
     contents = INTEGRATION_COMPOSE.read_text()
-    assert "ports:" not in contents
+    assert '"127.0.0.1:7689:7687"' in contents
     assert "healthcheck:" in contents
     assert "neo4j:" in contents
 
