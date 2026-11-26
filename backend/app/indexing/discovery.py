@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from app._native import discover_source_files_native
+
 IGNORED_DIRS = {
     ".git",
     ".hg",
@@ -28,19 +30,7 @@ LANGUAGE_BY_SUFFIX = {
 
 
 def source_files(root: Path) -> list[Path]:
-    files: list[Path] = []
-    root_resolved = root.resolve()
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        if any(part in IGNORED_DIRS for part in path.parts):
-            continue
-        if path.suffix not in LANGUAGE_BY_SUFFIX:
-            continue
-        if _escapes_root(path, root_resolved):
-            continue
-        files.append(path)
-    return sorted(files)
+    return [Path(p) for p in discover_source_files_native(str(root))]
 
 
 def _escapes_root(path: Path, root_resolved: Path) -> bool:

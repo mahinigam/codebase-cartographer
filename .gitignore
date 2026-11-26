@@ -45,3 +45,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Rust / Maturin build artifacts
+target/
+wheels/
+*.so
+*.pyd

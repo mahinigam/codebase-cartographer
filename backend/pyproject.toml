@@ -1,6 +1,12 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+manifest-path = "rust/Cargo.toml"
+module-name = "app._native"
+python-source = "."
+features = ["extension-module"]
 
 [project]
 name = "codebase-cartographer-backend"
