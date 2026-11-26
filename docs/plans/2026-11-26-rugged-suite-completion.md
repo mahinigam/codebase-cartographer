@@ -135,8 +135,8 @@ The browser regression exposed a silent `refresh()` catch that reported scan suc
 
 **Files:** Modify `.github/workflows/ci.yml`, `scripts/test-e2e.sh`, and `backend/tests/test_test_commands.py`.
 
-- [ ] Remove the fixed `/tmp/cartographer-e2e-server.pid` file. Start `next start` from `frontend` in the script process, retain `$!` directly, and use an `EXIT` trap that stops and waits for that exact process while preserving the original exit status.
-- [ ] Use a private log path and preserve the original status in cleanup:
+- [x] Remove the fixed `/tmp/cartographer-e2e-server.pid` file. Start `next start` from `frontend` in the script process, retain `$!` directly, and use an `EXIT` trap that stops and waits for that exact process while preserving the original exit status.
+- [x] Use a private log path and preserve the original status in cleanup:
 
 ```bash
 server_log="$(mktemp "${TMPDIR:-/tmp}/cartographer-e2e.XXXXXX.log")"
@@ -156,8 +156,8 @@ trap cleanup EXIT
 ```
 
 Set `NEXT_TELEMETRY_DISABLED=1`, build first, then launch `./node_modules/.bin/next start --hostname 127.0.0.1 --port 5183` directly in the background so `$!` is the server process.
-- [ ] Make readiness failure print the captured server log and fail after the existing bounded retry loop; do not report success unless the final HTTP probe succeeds.
-- [ ] Add an `e2e` GitHub job with checkout, Python 3.12, Rust 1.94.0, Node 22, backend `uv sync`, `npm ci`, and `uv run playwright install --with-deps chromium`; run `./scripts/test-e2e.sh`.
+- [x] Make readiness failure print the captured server log and fail after the existing bounded retry loop; do not report success unless the final HTTP probe succeeds.
+- [x] Add an `e2e` GitHub job with checkout, Python 3.12, Rust 1.94.0, Node 22, backend `uv sync`, `npm ci`, and `uv run playwright install --with-deps chromium`; run `./scripts/test-e2e.sh`.
 
 ```yaml
 e2e:
@@ -180,9 +180,9 @@ e2e:
     - run: ./scripts/test-e2e.sh
 ```
 
-- [ ] Extend the command-contract test to verify the launcher uses a cleanup trap and does not rely on a shared PID file. Run `cd backend && uv run pytest tests/test_test_commands.py -q`.
-- [ ] Run `git diff --check`; expect three separately visible GitHub jobs: `check`, `integration`, and `e2e`.
-- [ ] Commit as `ci: run browser E2E tests separately`.
+- [x] Extend the command-contract test to verify the launcher owns its server process, uses private cleanup, rejects an occupied port, and has no shared PID file; verify E2E CI setup. Run `cd backend && uv run pytest tests/test_test_commands.py -q`.
+- [x] Run `git diff --check`; the workflow has three separate jobs (`check`, `integration`, and `e2e`) on both configured triggers.
+- [x] Commit as `ci: run browser E2E tests separately`.
 
 ### Task 6: Add an explicitly gated provider smoke command
 

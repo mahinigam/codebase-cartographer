@@ -119,6 +119,33 @@ def test_ci_runs_integration_in_a_separate_credential_free_job() -> None:
     assert "secrets." not in integration_job
 
 
+def test_e2e_launcher_owns_its_server_and_private_log() -> None:
+    contents = E2E_SCRIPT.read_text()
+    assert "cartographer-e2e-server.pid" not in contents
+    assert 'server_log="$(mktemp "${TMPDIR:-/tmp}/cartographer-e2e.' in contents
+    assert "Port 5183 is already serving a response" in contents
+    assert "trap cleanup EXIT" in contents
+    assert 'kill "$server_pid"' in contents
+    assert 'wait "$server_pid"' in contents
+    assert 'cat "$server_log" >&2' in contents
+    assert 'rm -f -- "$server_log"' in contents
+    assert "NEXT_TELEMETRY_DISABLED=1" in contents
+
+
+def test_ci_runs_browser_e2e_in_a_separate_credential_free_job() -> None:
+    contents = CI_WORKFLOW.read_text()
+    match = re.search(
+        r"(?ms)^  e2e:\n(.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)",
+        contents,
+    )
+    assert match is not None
+    e2e_job = match.group(1)
+    assert 'node-version: "22"' in e2e_job
+    assert "playwright install --with-deps chromium" in e2e_job
+    assert "run: ./scripts/test-e2e.sh" in e2e_job
+    assert "secrets." not in e2e_job
+
+
 def test_parallel_coverage_files_are_ignored() -> None:
     assert ".coverage.*" in GITIGNORE.read_text()
 
