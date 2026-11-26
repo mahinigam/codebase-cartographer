@@ -28,6 +28,12 @@ describe('API Functions', () => {
     expect(res).toEqual({ data: 'mocked' });
   });
 
+  it('does not send a JSON content type for read-only requests', async () => {
+    await api.getRepositories();
+    const [, options] = vi.mocked(fetch).mock.calls[0];
+    expect(new Headers(options?.headers).get('Content-Type')).toBeNull();
+  });
+
   it('getFiles', async () => {
     const res = await api.getFiles('repo');
     expect(res).toEqual({ data: 'mocked' });
