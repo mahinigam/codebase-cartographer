@@ -22,7 +22,24 @@ vi.mock('../components/GraphPanel', () => ({ GraphPanel: (props: any) => (<div><
 vi.mock('../components/Inspector', () => ({ Inspector: (props: any) => (<div><button data-testid="inspector-close" onClick={props.onClose}></button><button data-testid="inspector-select" onClick={() => props.onSelectFile('b.py')}></button><button data-testid="inspector-trace" onClick={() => props.onTraceImpact('a.py')}></button></div>) }));
 vi.mock('../components/AskPanel', () => ({ AskPanel: (props: any) => (<div><button data-testid="ask-clear" onClick={props.onClear}></button><button data-testid="ask-select" onClick={() => props.onSelectFile('c.py', 'ai')}></button></div>) }));
 vi.mock('../components/CommandPalette', () => ({ CommandPalette: (props: any) => (<div><button data-testid="cmd-close" onClick={props.onClose}></button><button data-testid="cmd-select" onClick={() => props.onSelectFile('d.py', 'search')}></button><button data-testid="cmd-ask" onClick={() => props.onAsk('what?')}></button></div>) }));
-vi.mock('../components/Toast', () => ({ ToastContainer: (props: any) => (<button data-testid="toast-dismiss" onClick={() => props.onDismiss(1)}></button>), createToast: (msg: string, type: any) => ({ id: 1, message: msg, type }) }));
+vi.mock('../components/Toast', () => {
+  let nextToastId = 1;
+  return {
+    ToastContainer: (props: any) => (
+      <>
+        <button data-testid="toast-dismiss" onClick={() => props.onDismiss(1)}></button>
+        <div data-testid="toasts">
+          {props.toasts.map((toast: any) => <div key={toast.id}>{toast.message}</div>)}
+        </div>
+      </>
+    ),
+    createToast: (msg: string, type: any) => ({
+      id: nextToastId++,
+      message: msg,
+      type,
+    }),
+  };
+});
 vi.mock('../components/EmptyWorkspace', () => ({ EmptyWorkspace: (props: any) => (<button data-testid="empty-scan" onClick={() => props.onScan('/new', true)}></button>) }));
 
 global.ResizeObserver = class ResizeObserver { observe() {} unobserve() {} disconnect() {} };
@@ -31,7 +48,7 @@ describe('CartographerApp', () => {
   beforeEach(() => { vi.clearAllMocks(); });
   it('covers all nested callbacks', async () => {
     vi.mocked(api.getRepositories).mockResolvedValue({ repositories: [{ id: '1', root_path: '/test/repo', last_scanned: '2023-01-01', name: 'repo' }] } as any);
-    vi.mocked(api.getOverview).mockResolvedValue({ files: 10, directories: 2, total_lines: 100, symbols: 5 } as any);
+    vi.mocked(api.getOverview).mockResolvedValue({ overview: { files: 10, symbols: 5, avg_score: 0 }, load_bearing: [] } as any);
     vi.mocked(api.getGraph).mockResolvedValue({ nodes: [{ id: 'a.py', label: 'a.py' }], edges: [], clusters: [] } as any);
     vi.mocked(api.getFiles).mockResolvedValue({ files: [{ path: 'a.py', loc: 10 }] } as any);
     vi.mocked(api.getFileDetail).mockResolvedValue({ path: 'a.py', loc: 10, dependents: [], external_deps: [], imports: [], symbols: [] } as any);
@@ -83,5 +100,49 @@ describe('CartographerApp', () => {
     vi.mocked(api.scanRepo).mockRejectedValue("Scan err string");
     fireEvent.click(screen.getByTestId('empty-scan'));
     await new Promise(r => setTimeout(r, 0));
+  });
+
+  it('reports workspace refresh failures instead of confirming a successful scan', async () => {
+    vi.mocked(api.getRepositories)
+      .mockResolvedValueOnce({ repositories: [] } as any)
+      .mockResolvedValueOnce({
+        repositories: [{ name: 'new', root_path: '/new' }],
+      } as any);
+    vi.mocked(api.getOverview).mockResolvedValue({
+      overview: { files: 1, symbols: 1, avg_score: 0 },
+      load_bearing: [],
+    } as any);
+    vi.mocked(api.getGraph)
+      .mockResolvedValueOnce({ nodes: [], edges: [] } as any)
+      .mockRejectedValueOnce(new Error('Graph unavailable'));
+    vi.mocked(api.getFiles).mockResolvedValue({ files: [] } as any);
+    vi.mocked(api.scanRepo).mockResolvedValue({
+      repository: 'new',
+      root_path: '/new',
+      files: 1,
+      symbols: 1,
+      imports: 0,
+    } as any);
+
+    render(<CartographerApp defaultRepoPath='/new' />);
+    await waitFor(() => expect(screen.getByTestId('empty-scan')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('empty-scan'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Graph unavailable')).toBeTruthy();
+    });
+    expect(screen.queryByText('Repository scanned successfully.')).toBeNull();
+  });
+
+  it('reports failures while loading the initial workspace', async () => {
+    vi.mocked(api.getRepositories).mockRejectedValue(
+      new Error('Repository list unavailable'),
+    );
+
+    render(<CartographerApp defaultRepoPath='/new' />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Repository list unavailable')).toBeTruthy();
+    });
   });
 });

@@ -96,8 +96,8 @@ integration:
 
 **Files:** Modify `frontend/e2e/critical_paths.py`; modify app components only if accessible interaction tests expose a defect.
 
-- [ ] Refactor the route fixture to return stable repositories, graph nodes/edges, file detail/risk data, and question evidence for successful responses; allow each API path to be fulfilled with a controlled status/error.
-- [ ] Use API shapes already declared by `frontend/src/lib/api.ts`: graph nodes have `id`, `label`, `score`, and `labels`; file detail includes `path`, `loc`, `load_bearing_score`, `symbols`, `imports`, and `dependents`; query responses include `answer`, `evidence`, and `semantic_matches`.
+- [x] Refactor the route fixture to return stable repositories, graph nodes/edges, file detail/risk data, and question evidence for successful responses; allow each API path to be fulfilled with a controlled status/error.
+- [x] Use API shapes already declared by `frontend/src/lib/api.ts`: graph nodes have `id`, `label`, `score`, and `labels`; file detail includes `path`, `loc`, `load_bearing_score`, `symbols`, `imports`, and `dependents`; query responses include `answer`, `evidence`, and `semantic_matches`.
 
 ```python
 query_response = {
@@ -109,8 +109,8 @@ query_response = {
 }
 ```
 
-- [ ] Add independent browser cases for: empty initial workspace; scan loading held by an async route barrier; successful scan → graph node/file inspection → risk view → command-palette question and rendered evidence; scan failure and retry; graph/file/query failure feedback and recovery.
-- [ ] Use an async Playwright route barrier for loading, not a sleep:
+- [x] Add independent browser cases for: empty initial workspace; scan loading held by an async route barrier; successful scan → graph node/file inspection → risk view → command-palette question and rendered evidence; scan failure and retry; graph/file/query failure feedback and recovery.
+- [x] Use an async Playwright route barrier for loading, not a sleep:
 
 ```python
 scan_started, release_scan = asyncio.Event(), asyncio.Event()
@@ -122,11 +122,14 @@ async def hold_scan(route):
 ```
 
 In the scenario, click **Analyze repository**, await `scan_started`, assert the button says **Scanning repository...** and is disabled inside `try`, and set `release_scan` in `finally` before asserting the success toast. A failed assertion must never leave the intercepted request blocked during browser teardown.
-- [ ] Capture page errors and unexpected request failures per browser context. Deliberately fulfilled error responses must not be counted as transport failures.
-- [ ] In the API route fixture, whitelist `/api/repositories`, `/api/scan`, `/api/overview`, `/api/graph`, `/api/files`, `/api/file-detail`, `/api/search`, and `/api/query`; record and abort any other API URL. Add one deliberate `route.abort()` scan case and assert the user sees the error toast and can retry successfully.
-- [ ] Add keyboard-only checks for the repository input, scan action, command-palette trigger/input, and visible focus; check `scrollWidth <= clientWidth` at 390×844, 768×1024, and 1440×900.
-- [ ] Run `./scripts/test-e2e.sh`; expect all named scenarios to pass without fixed sleeps, real backend requests, or provider calls. If a semantic fix is needed, add a focused component regression test in the owning `*.test.tsx`.
-- [ ] Commit as `test: cover browser investigation states`.
+- [x] Capture page errors and unexpected request failures per browser context. Deliberately fulfilled error responses must not be counted as transport failures.
+- [x] In the API route fixture, whitelist `/api/repositories`, `/api/scan`, `/api/overview`, `/api/graph`, `/api/files`, `/api/file-detail`, `/api/search`, and `/api/query`; record and abort any other API URL. Add one deliberate `route.abort()` scan case and assert the user sees the error toast and can retry successfully.
+- [x] Add keyboard-only checks for the repository input, scan action, command-palette trigger/input, and visible focus; check `scrollWidth <= clientWidth` at 390×844, 768×1024, and 1440×900.
+- [x] Run `./scripts/test-e2e.sh`; all seven scenarios pass without fixed sleeps, live backend requests, or provider calls.
+
+The browser regression exposed a silent `refresh()` catch that reported scan success after graph loading failed. `CartographerApp` now propagates refresh errors to scan/repository handlers and reports initial loading failures; focused component tests cover these states.
+
+- [x] Commit as `test: cover browser investigation states`.
 
 ### Task 5: Run browser E2E in its own CI job and harden its launcher
 
