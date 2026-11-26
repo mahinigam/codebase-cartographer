@@ -118,11 +118,13 @@ The graph is persisted in Neo4j and can be queried independently of the generati
 
 ---
 
-## 2. Static Code Analysis
+## 2. Static Code Analysis (Native Rust Core)
+
+The deterministic indexing pipeline (`app._native`, built in Rust with PyO3, Rayon, `ignore`, `git2`, and `tree-sitter`) runs in parallel across CPU cores while releasing the Python GIL so the FastAPI server stays responsive during scans.
 
 ### Python
 
-Python repositories are parsed with the standard `ast` module.
+Python repositories are parsed natively in Rust using `tree-sitter-python`.
 
 Cartographer extracts:
 
@@ -137,7 +139,7 @@ Cartographer extracts:
 
 ### JavaScript / TypeScript
 
-JavaScript and TypeScript are analyzed using Tree-sitter, with a regex fallback for parser failures or environments where Tree-sitter is unavailable.
+JavaScript, JSX, TypeScript, and TSX are analyzed natively in Rust using `tree-sitter-javascript` and `tree-sitter-typescript` (with thread-local parser reuse).
 
 The parser recognizes common:
 
@@ -148,7 +150,7 @@ The parser recognizes common:
 - classes
 - control-flow constructs used in complexity estimation
 
-This gives the system a language-aware structural representation before any AI analysis occurs.
+This gives the system a unified, language-aware structural representation before any AI analysis occurs.
 
 ---
 
@@ -762,6 +764,7 @@ The project includes backend and frontend test suites covering core indexing, gr
 
 ### Backend
 
+- `cargo test` (Rust core unit tests for discovery, Git churn, parsers, and resolver)
 - pytest
 - pytest-asyncio
 - pytest-cov
@@ -826,7 +829,8 @@ Ollama can optionally run on the host and provide local generation/embedding fal
 ## Prerequisites
 
 - Docker / Docker Compose
-- Python 3.12+
+- Python 3.11+ (3.13 recommended)
+- Rust toolchain (`1.94.0`, pinned in `backend/rust-toolchain.toml`) + `maturin`
 - `uv`
 - Node.js 22+
 - npm
@@ -856,6 +860,7 @@ docker compose up -d neo4j
 ```bash
 cd backend
 uv sync
+uv run maturin develop --release
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
@@ -929,6 +934,19 @@ codebase-cartographer/
 │   │   │
 │   │   └── main.py
 │   │
+│   ├── rust/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── discovery.rs
+│   │       ├── git_history.rs
+│   │       ├── js_parser.rs
+│   │       ├── lib.rs
+│   │       ├── models.rs
+│   │       ├── python_parser.rs
+│   │       ├── resolver.rs
+│   │       └── scanner.rs
+│   │
+│   ├── rust-toolchain.toml
 │   └── tests/
 │
 ├── frontend/
