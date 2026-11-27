@@ -47,7 +47,7 @@ function CartographerNode({ data }: { data: NodeData }) {
           {data.loc !== undefined && <span>{data.loc} LOC</span>}
         </div>
         {data.framework && (
-          <div className="node-framework" style={{ fontSize: '10px', color: '#38bdf8' }}>{data.framework}</div>
+          <div className="node-framework" style={{ fontSize: '10px', color: '#D4AF37' }}>{data.framework}</div>
         )}
         {data.dependents !== undefined && data.dependents > 0 && (
           <div className="node-deps">{data.dependents} dependents</div>
@@ -250,11 +250,11 @@ function GraphPanelContent({
         zoomOnPinch={true}
         preventScrolling={true}
       >
-        <Background color="rgba(255,255,255,0.06)" gap={24} size={2} />
+        <Background color="rgba(212, 175, 55, 0.06)" gap={24} size={1.5} />
         <MiniMap 
-          nodeColor={(n) => n.data.isHighRisk ? '#f43f5e' : 'rgba(255,255,255,0.3)'}
-          maskColor="rgba(0,0,0,0.5)"
-          style={{ backgroundColor: 'rgba(10,10,15,0.8)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
+          nodeColor={(n) => n.data.isHighRisk ? '#f43f5e' : n.data.isSelected ? '#D4AF37' : 'rgba(255,255,255,0.24)'}
+          maskColor="rgba(9, 9, 11, 0.65)"
+          style={{ backgroundColor: 'rgba(17, 17, 19, 0.9)', border: '1px solid rgba(212, 175, 55, 0.16)', borderRadius: '8px' }}
         />
       </ReactFlow>
 
