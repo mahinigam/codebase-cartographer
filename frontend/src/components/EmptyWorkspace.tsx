@@ -80,12 +80,18 @@ export function EmptyWorkspace({ defaultRepoPath, onScan, loading, repositories 
             <h3>Previously Scanned Repositories</h3>
             <ul className="repo-list">
               {repositories.map(repo => (
-                <li key={repo.root_path} className="repo-list-item" onClick={() => onSelectRepo(repo.root_path)}>
-                  <Database size={16} className="repo-icon" />
-                  <div className="repo-info">
-                    <span className="repo-name">{repo.name}</span>
-                    <span className="repo-path">{repo.root_path}</span>
-                  </div>
+                <li key={repo.root_path} className="repo-list-item">
+                  <button
+                    type="button"
+                    className="repo-list-btn"
+                    onClick={() => onSelectRepo(repo.root_path)}
+                  >
+                    <Database size={16} className="repo-icon" />
+                    <div className="repo-info">
+                      <span className="repo-list-name">{repo.name}</span>
+                      <span className="repo-path">{repo.root_path}</span>
+                    </div>
+                  </button>
                 </li>
               ))}
             </ul>

@@ -88,4 +88,21 @@ describe('API Functions', () => {
     ));
     await expect(api.getRepositories()).rejects.toThrow('Error Not Found');
   });
+
+  it('wraps network failures in ApiNetworkError with an actionable message', async () => {
+    vi.stubGlobal('process', {
+      env: { NEXT_PUBLIC_API_BASE: 'http://localhost:8000', NEXT_PUBLIC_API_TOKEN: 'token' }
+    });
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))));
+    await expect(api.getRepositories()).rejects.toThrow(
+      'Cannot reach backend at http://localhost:8000. Make sure the API server is running and try again.'
+    );
+  });
+
+  it('rethrows AbortError without wrapping', async () => {
+    const abortErr = new Error('The operation was aborted.');
+    abortErr.name = 'AbortError';
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(abortErr)));
+    await expect(api.getRepositories()).rejects.toBe(abortErr);
+  });
 });
