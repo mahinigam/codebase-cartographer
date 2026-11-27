@@ -250,6 +250,7 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
           <WorkspaceTopbar
             repoName={activeRepo?.name || scanRepoName || "Codebase"}
             branch="main" // Can add real branch detection later
+            isScanning={loadingScan}
             onOpenCommandPalette={() => setCommandPaletteOpen(true)}
             onHome={() => {
               setActiveRepoPath("");
@@ -259,7 +260,7 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
           
           <div className="workspace-main">
             <PanelGroup orientation="horizontal" style={{ width: '100%', height: '100%' }}>
-              <Panel defaultSize="20" minSize="15" maxSize="35">
+              <Panel defaultSize="25" minSize="22" maxSize="35">
                 <RepositoryExplorer
                   repositories={repositories}
                   activeRepoPath={activeRepoPath}
