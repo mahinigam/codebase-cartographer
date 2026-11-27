@@ -65,9 +65,9 @@ const nodeTypes = {
 function layoutWithDagre(nodes: Node[], edges: Edge[]): Node[] {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 90 });
+  g.setGraph({ rankdir: "TB", nodesep: 36, ranksep: 68, ranker: "network-simplex" });
 
-  nodes.forEach((node) => g.setNode(node.id, { width: 220, height: 80 }));
+  nodes.forEach((node) => g.setNode(node.id, { width: 196, height: 72 }));
   edges.forEach((edge) => g.setEdge(edge.source, edge.target));
 
   dagre.layout(g);
@@ -76,7 +76,7 @@ function layoutWithDagre(nodes: Node[], edges: Edge[]): Node[] {
     const pos = g.node(node.id);
     return {
       ...node,
-      position: { x: (pos?.x ?? 0) - 110, y: (pos?.y ?? 0) - 40 },
+      position: { x: (pos?.x ?? 0) - 98, y: (pos?.y ?? 0) - 36 },
     };
   });
 }
@@ -219,17 +219,35 @@ function GraphPanelContent({
     <div className="graph-panel">
       {graph.clusters && graph.clusters.length > 0 && (
         <div className="architecture-scope">
-          <span className="scope-label">ARCHITECTURE SCOPE</span>
-          {graph.clusters.map(c => (
-            <button key={c.name} className="cluster-btn" title={c.extraction_readiness ? `Extraction readiness: ${c.extraction_readiness}` : undefined}>
-              {c.name} <span className="count">{c.files}</span>
-              {c.cohesion !== undefined && (
-                <div className="cluster-metrics" style={{ fontSize: '10px', opacity: 0.7, marginTop: '4px' }}>
-                  Coh: {c.cohesion} | Cpl: {c.coupling}
-                </div>
-              )}
-            </button>
-          ))}
+          <span className="scope-label">SCOPE</span>
+          <div className="scope-pills">
+            {graph.clusters.map(c => (
+              <button
+                key={c.name}
+                className="cluster-btn"
+                title={[
+                  c.extraction_readiness ? `Extraction readiness: ${c.extraction_readiness}` : null,
+                  c.cohesion !== undefined ? `Cohesion: ${c.cohesion} | Coupling: ${c.coupling}` : null,
+                ].filter(Boolean).join(" · ") || undefined}
+              >
+                <span className="cluster-name">{c.name}</span>
+                <span className="count">{c.files}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {nodes.length === 0 && (
+        <div className="graph-empty-overlay">
+          <p>No files match the active graph filters.</p>
+          <button
+            type="button"
+            className="reset-filters-btn"
+            onClick={() => setFilters({ hideTests: false, highRiskOnly: false, hideIsolated: false })}
+          >
+            Reset filters
+          </button>
         </div>
       )}
 

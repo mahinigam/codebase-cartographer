@@ -16,11 +16,11 @@ function CollapsibleSection({ title, defaultOpen = true, children, badge }: { ti
   const [isOpen, setIsOpen] = useState(defaultOpen);
   return (
     <div className="inspector-section">
-      <div className="section-header" onClick={() => setIsOpen(!isOpen)}>
-        {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+      <button type="button" className="section-header" onClick={() => setIsOpen(!isOpen)} aria-expanded={isOpen}>
+        <ChevronRight size={14} className={`chevron-icon ${isOpen ? "rotated" : ""}`} />
         <span className="title">{title}</span>
         {badge !== undefined && <span className="badge">{badge}</span>}
-      </div>
+      </button>
       {isOpen && <div className="section-content">{children}</div>}
     </div>
   );
@@ -157,14 +157,14 @@ export function Inspector({ file, onClose, onSelectFile, onTraceImpact, onAskAbo
         {impactData && impactData.target === file.path && (
           <CollapsibleSection title="IMPACT TRACE">
             {impactData.refactor_safety && (
-              <div className={`jev-safety-gate ${impactData.refactor_safety.safe_to_refactor ? 'safe' : 'unsafe'}`} style={{ padding: '8px', marginBottom: '8px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                <div style={{ fontWeight: 600 }}>Refactor Safety: {impactData.refactor_safety.safe_to_refactor ? 'SAFE' : 'HIGH RISK'}</div>
-                <div style={{ fontSize: '11px', opacity: 0.8 }}>Probability: {impactData.refactor_safety.safe_probability}</div>
-                <div style={{ fontSize: '11px', marginTop: '4px' }}>Blast Radius: {impactData.refactor_safety.blast_radius}</div>
-                <div style={{ fontSize: '11px', marginTop: '4px' }}>Strategy: {impactData.refactor_safety.recommended_strategy}</div>
+              <div className={`jev-safety-gate ${impactData.refactor_safety.safe_to_refactor ? 'safe' : 'unsafe'}`}>
+                <div className="safety-title">Refactor Safety: {impactData.refactor_safety.safe_to_refactor ? 'SAFE' : 'HIGH RISK'}</div>
+                <div className="safety-meta">Probability: {impactData.refactor_safety.safe_probability}</div>
+                <div className="safety-meta">Blast Radius: {impactData.refactor_safety.blast_radius}</div>
+                <div className="safety-meta">Strategy: {impactData.refactor_safety.recommended_strategy}</div>
               </div>
             )}
-            <div className="impact-explanation" style={{ fontSize: '12px', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+            <div className="impact-explanation">
               {/* Render untrusted LLM output as plain text — never raw HTML. */}
               {impactData.explanation}
             </div>
