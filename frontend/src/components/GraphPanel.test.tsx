@@ -40,6 +40,21 @@ describe('GraphPanel', () => {
     render(<GraphPanel graph={graph} onNodeClick={onNodeClick} overview={overview} impactMode={true} impactData={impactData} />);
   });
 
+  it('does not flash impact edges while impactData is loading', () => {
+    const onNodeClick = vi.fn();
+    const { container } = render(
+      <GraphPanel
+        graph={graph}
+        onNodeClick={onNodeClick}
+        overview={overview}
+        selectedFile="a.py"
+        impactMode={true}
+        impactData={null}
+      />
+    );
+    expect(container.querySelectorAll('.react-flow__edge.animated').length).toBe(0);
+  });
+
   it('handles empty graph', () => {
     const onNodeClick = vi.fn();
     render(<GraphPanel graph={{nodes: [], edges: [], clusters: []}} onNodeClick={onNodeClick} />);

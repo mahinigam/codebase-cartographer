@@ -103,7 +103,7 @@ export function RepositoryExplorer({
             style={{ paddingLeft }}
             onClick={() => toggleFolder(node.path)}
           >
-            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <ChevronRight size={14} className={`chevron-icon ${isExpanded ? "rotated" : ""}`} />
             <Folder size={14} className="folder-icon" />
             <span className="node-name">{node.name}</span>
           </div>
@@ -132,41 +132,53 @@ export function RepositoryExplorer({
     <div className="repository-explorer">
       <div className="explorer-header">
         <div className="section-title">REPOSITORY</div>
-        <select
-          className="repo-selector"
-          value={activeRepoPath}
-          onChange={(e) => onRepoChange(e.target.value)}
-        >
-          <option value="" disabled>Select repository...</option>
-          {repositories.map(r => (
-            <option key={r.root_path} value={r.root_path}>{r.name}</option>
-          ))}
-        </select>
+        <div className="repo-selector-row">
+          <select
+            className="repo-selector"
+            value={activeRepoPath}
+            onChange={(e) => onRepoChange(e.target.value)}
+          >
+            <option value="" disabled>Select repository...</option>
+            {repositories.map(r => (
+              <option key={r.root_path} value={r.root_path}>{r.name}</option>
+            ))}
+          </select>
+          {activeRepo && (
+            <button className="rescan-btn" onClick={onRescan} title="Rescan repository" aria-label="Rescan repository">
+              <RefreshCw size={13} />
+            </button>
+          )}
+        </div>
         {activeRepo && (
           <div className="repo-meta">
-            {files.length} files • {activeRepo.indexed_at ? `indexed ${new Date(activeRepo.indexed_at).toLocaleTimeString()}` : 'indexed recently'}
-            <button className="rescan-btn" onClick={onRescan} title="Rescan repository">
-              <RefreshCw size={12} />
-            </button>
+            <span>{files.length} files</span>
+            <span className="meta-dot">·</span>
+            <span>{activeRepo.indexed_at ? `indexed ${new Date(activeRepo.indexed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'indexed recently'}</span>
           </div>
         )}
       </div>
 
       <div className="explorer-views">
         <div className="section-title">VIEWS</div>
-        <button className={`view-btn ${activeView === "architecture" ? "active" : ""}`} onClick={() => { setActiveView("architecture"); onViewChange?.("architecture"); }}>
-          <Layers size={14} /> Architecture
-        </button>
-        <button className={`view-btn ${activeView === "risk" ? "active" : ""}`} onClick={() => { setActiveView("risk"); onViewChange?.("risk"); }}>
-          <AlertTriangle size={14} /> Risk hotspots
-        </button>
+        <div className="views-segmented">
+          <button className={`view-btn ${activeView === "architecture" ? "active" : ""}`} onClick={() => { setActiveView("architecture"); onViewChange?.("architecture"); }}>
+            <Layers size={13} /> <span>Architecture</span>
+          </button>
+          <button className={`view-btn ${activeView === "risk" ? "active" : ""}`} onClick={() => { setActiveView("risk"); onViewChange?.("risk"); }}>
+            <AlertTriangle size={13} /> <span>Risk hotspots</span>
+          </button>
+        </div>
       </div>
 
       <div className="explorer-tree">
         <div className="section-title">{activeView === "architecture" ? "FILES" : "HIGH RISK FILES"}</div>
         <div className="tree-container">
           {activeView === "architecture" ? (
-            tree.children?.map(c => renderNode(c, 0))
+            tree.children && tree.children.length > 0 ? (
+              tree.children.map(c => renderNode(c, 0))
+            ) : (
+              <div className="explorer-empty">No indexed files yet.</div>
+            )
           ) : (
             <RiskHotspots files={files} onSelectFile={onSelectFile} />
           )}

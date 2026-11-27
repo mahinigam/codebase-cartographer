@@ -65,9 +65,9 @@ const nodeTypes = {
 function layoutWithDagre(nodes: Node[], edges: Edge[]): Node[] {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 90 });
+  g.setGraph({ rankdir: "TB", nodesep: 36, ranksep: 68, ranker: "network-simplex" });
 
-  nodes.forEach((node) => g.setNode(node.id, { width: 220, height: 80 }));
+  nodes.forEach((node) => g.setNode(node.id, { width: 196, height: 72 }));
   edges.forEach((edge) => g.setEdge(edge.source, edge.target));
 
   dagre.layout(g);
@@ -76,7 +76,7 @@ function layoutWithDagre(nodes: Node[], edges: Edge[]): Node[] {
     const pos = g.node(node.id);
     return {
       ...node,
-      position: { x: (pos?.x ?? 0) - 110, y: (pos?.y ?? 0) - 40 },
+      position: { x: (pos?.x ?? 0) - 98, y: (pos?.y ?? 0) - 36 },
     };
   });
 }
@@ -153,14 +153,27 @@ function GraphPanelContent({
       rawNodes.forEach(n => nodeIds.add(n.id));
     }
 
-    const hasSelection = Boolean(selectedFile) || impactMode;
+    const isImpactActive = Boolean(impactMode && impactData);
+    const hasSelection = Boolean(selectedFile) || isImpactActive;
     let selectedNeighbors = new Set<string>();
 
     if (hasSelection) {
-      if (impactMode && impactData) {
-        selectedNeighbors.add(impactData.target);
-        impactData.direct_dependents?.forEach((d: string) => selectedNeighbors.add(d));
-        impactData.transitive_dependents?.forEach((d: any) => selectedNeighbors.add(d.path));
+      if (isImpactActive && impactData) {
+        const labelToId = new Map(rawNodes.map((n) => [n.data.label, n.id]));
+        const resolveNodeId = (pathOrId?: string) =>
+          pathOrId ? (labelToId.get(pathOrId) ?? pathOrId) : undefined;
+
+        const targetId = resolveNodeId(impactData.target);
+        if (targetId) selectedNeighbors.add(targetId);
+
+        impactData.direct_dependents?.forEach((d: string) => {
+          const id = resolveNodeId(d);
+          if (id) selectedNeighbors.add(id);
+        });
+        impactData.transitive_dependents?.forEach((d: any) => {
+          const id = resolveNodeId(typeof d === "string" ? d : d?.path);
+          if (id) selectedNeighbors.add(id);
+        });
       } else if (selectedFile) {
         const selectedId = rawNodes.find(n => n.data.label === selectedFile)?.id;
         if (selectedId) {
@@ -175,16 +188,15 @@ function GraphPanelContent({
       // Update edges styling for selection
       rawEdges = rawEdges.map((edge) => {
         const isRelated = selectedNeighbors.has(edge.source) && selectedNeighbors.has(edge.target);
-        const isDimmed = !isRelated;
 
         let strokeColor = isRelated ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.05)';
-        if (impactMode && isRelated) {
+        if (isImpactActive && isRelated) {
            strokeColor = '#f43f5e';
         }
 
         return {
           ...edge,
-          animated: impactMode && isRelated,
+          animated: isImpactActive && isRelated,
           style: { 
             stroke: strokeColor, 
             strokeWidth: isRelated ? 2 : 1.5 
@@ -201,7 +213,7 @@ function GraphPanelContent({
           node.style = { opacity: 0.3 };
         } else {
           node.style = { opacity: 1, zIndex: 10 };
-          if (impactMode && node.data.label !== impactData?.target) {
+          if (isImpactActive && node.data.label !== impactData?.target) {
             node.className = (node.className || "") + " impacted";
           }
         }
@@ -219,17 +231,35 @@ function GraphPanelContent({
     <div className="graph-panel">
       {graph.clusters && graph.clusters.length > 0 && (
         <div className="architecture-scope">
-          <span className="scope-label">ARCHITECTURE SCOPE</span>
-          {graph.clusters.map(c => (
-            <button key={c.name} className="cluster-btn" title={c.extraction_readiness ? `Extraction readiness: ${c.extraction_readiness}` : undefined}>
-              {c.name} <span className="count">{c.files}</span>
-              {c.cohesion !== undefined && (
-                <div className="cluster-metrics" style={{ fontSize: '10px', opacity: 0.7, marginTop: '4px' }}>
-                  Coh: {c.cohesion} | Cpl: {c.coupling}
-                </div>
-              )}
-            </button>
-          ))}
+          <span className="scope-label">SCOPE</span>
+          <div className="scope-pills">
+            {graph.clusters.map(c => (
+              <button
+                key={c.name}
+                className="cluster-btn"
+                title={[
+                  c.extraction_readiness ? `Extraction readiness: ${c.extraction_readiness}` : null,
+                  c.cohesion !== undefined ? `Cohesion: ${c.cohesion} | Coupling: ${c.coupling}` : null,
+                ].filter(Boolean).join(" · ") || undefined}
+              >
+                <span className="cluster-name">{c.name}</span>
+                <span className="count">{c.files}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {nodes.length === 0 && (
+        <div className="graph-empty-overlay">
+          <p>No files match the active graph filters.</p>
+          <button
+            type="button"
+            className="reset-filters-btn"
+            onClick={() => setFilters({ hideTests: false, highRiskOnly: false, hideIsolated: false })}
+          >
+            Reset filters
+          </button>
         </div>
       )}
 

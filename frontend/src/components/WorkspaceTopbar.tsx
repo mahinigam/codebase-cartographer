@@ -4,17 +4,18 @@ import { Home } from "lucide-react";
 type Props = {
   repoName: string;
   branch?: string;
+  isScanning?: boolean;
   onOpenCommandPalette: () => void;
   onHome?: () => void;
 };
 
-export function WorkspaceTopbar({ repoName, branch, onOpenCommandPalette, onHome }: Props) {
+export function WorkspaceTopbar({ repoName, branch, isScanning = false, onOpenCommandPalette, onHome }: Props) {
   return (
     <header className="workspace-topbar">
       <div className="topbar-left">
         {onHome && (
-          <button className="home-button" onClick={onHome} aria-label="Home" style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0 8px' }}>
-            <Home size={18} />
+          <button className="home-button" onClick={onHome} aria-label="Home" title="Back to home">
+            <Home size={16} />
           </button>
         )}
         <span className="brand">Cartographer</span>
@@ -32,7 +33,10 @@ export function WorkspaceTopbar({ repoName, branch, onOpenCommandPalette, onHome
       </div>
       
       <div className="topbar-right">
-        {/* Status indicator can go here */}
+        <div className={`topbar-status ${isScanning ? "scanning" : ""}`}>
+          <span className="status-dot" />
+          <span>{isScanning ? "Scanning…" : "Ready"}</span>
+        </div>
       </div>
     </header>
   );

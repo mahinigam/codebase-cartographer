@@ -175,6 +175,8 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
   // The universal selection action
   async function selectFile(path: string, source: "graph" | "tree" | "search" | "risk" | "ai" | "inspector") {
     setSelectedFile(path);
+    setImpactMode(false);
+    setImpactData(null);
     try {
       const detail = await getFileDetail(path, activeRepoPath);
       setFileDetail(detail);
@@ -192,7 +194,13 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
     try {
       const result = await analyzeImpact(path, 3, activeRepoPath);
       setImpactData(result);
-      addToast(`Impact analysis complete: ${result.direct_dependents.length} direct, ${result.transitive_dependents.length} transitive dependents.`, "success");
+      const directCount = result.direct_dependents?.length ?? 0;
+      const transitiveCount = result.transitive_dependents?.length ?? 0;
+      if (directCount === 0 && transitiveCount === 0) {
+        addToast(`No dependents found for ${path.split("/").pop() || path}.`, "info");
+      } else {
+        addToast(`Impact analysis complete: ${directCount} direct, ${transitiveCount} transitive dependents.`, "success");
+      }
     } catch (err: unknown) {
       addToast(err instanceof Error ? err.message : "Impact analysis failed");
       setImpactMode(false);
@@ -250,6 +258,7 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
           <WorkspaceTopbar
             repoName={activeRepo?.name || scanRepoName || "Codebase"}
             branch="main" // Can add real branch detection later
+            isScanning={loadingScan}
             onOpenCommandPalette={() => setCommandPaletteOpen(true)}
             onHome={() => {
               setActiveRepoPath("");
@@ -259,7 +268,7 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
           
           <div className="workspace-main">
             <PanelGroup orientation="horizontal" style={{ width: '100%', height: '100%' }}>
-              <Panel defaultSize="20" minSize="15" maxSize="35">
+              <Panel defaultSize="25" minSize="22" maxSize="35">
                 <RepositoryExplorer
                   repositories={repositories}
                   activeRepoPath={activeRepoPath}
