@@ -4,17 +4,26 @@ import React from 'react';
 import CartographerApp from './CartographerApp';
 import * as api from '../lib/api';
 
-vi.mock('../lib/api', () => ({
-  getRepositories: vi.fn(),
-  scanRepo: vi.fn(),
-  getOverview: vi.fn(),
-  getGraph: vi.fn(),
-  getFiles: vi.fn(),
-  askQuestion: vi.fn(),
-  analyzeImpact: vi.fn(),
-  getFileDetail: vi.fn(),
-  generateSummaries: vi.fn(),
-}));
+vi.mock('../lib/api', () => {
+  class ApiNetworkError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'ApiNetworkError';
+    }
+  }
+  return {
+    ApiNetworkError,
+    getRepositories: vi.fn(),
+    scanRepo: vi.fn(),
+    getOverview: vi.fn(),
+    getGraph: vi.fn(),
+    getFiles: vi.fn(),
+    askQuestion: vi.fn(),
+    analyzeImpact: vi.fn(),
+    getFileDetail: vi.fn(),
+    generateSummaries: vi.fn(),
+  };
+});
 
 vi.mock('../components/WorkspaceTopbar', () => ({ WorkspaceTopbar: (props: any) => (<button data-testid="open-cmd" onClick={props.onOpenCommandPalette}></button>) }));
 vi.mock('../components/RepositoryExplorer', () => ({ RepositoryExplorer: (props: any) => (<div><button data-testid="select-file-tree" onClick={() => props.onSelectFile('a.py')}></button><button data-testid="repo-change" onClick={() => props.onRepoChange('/test/repo2')}></button><button data-testid="rescan" onClick={props.onRescan}></button><button data-testid="view-change" onClick={() => props.onViewChange('risk')}></button></div>) }));
@@ -144,5 +153,40 @@ describe('CartographerApp', () => {
     await waitFor(() => {
       expect(screen.getByText('Repository list unavailable')).toBeTruthy();
     });
+  });
+
+  it('retries transient network errors on initial load and succeeds without error toast', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(api.getRepositories)
+        .mockRejectedValueOnce(new api.ApiNetworkError('Cannot reach backend'))
+        .mockResolvedValueOnce({ repositories: [] } as any);
+
+      render(<CartographerApp defaultRepoPath="" />);
+
+      await vi.advanceTimersByTimeAsync(900);
+      expect(api.getRepositories).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText('Cannot reach backend')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows error toast when initial load retries are exhausted', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(api.getRepositories).mockRejectedValue(
+        new api.ApiNetworkError('Cannot reach backend at http://localhost:8000')
+      );
+
+      render(<CartographerApp defaultRepoPath="" />);
+
+      await vi.advanceTimersByTimeAsync(6000);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(api.getRepositories).toHaveBeenCalledTimes(4);
+      expect(screen.getByText('Cannot reach backend at http://localhost:8000')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -181,17 +181,35 @@ export function withQuery(
   return query ? `${path}?${query}` : path;
 }
 
+export class ApiNetworkError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ApiNetworkError";
+  }
+}
+
 async function request(path: string, init?: RequestInit) {
   const base = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
   const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
   const headers = new Headers(init?.headers);
   if (init?.body) headers.set("Content-Type", "application/json");
   if (apiToken) headers.set("X-API-Key", apiToken);
-  const response = await fetch(`${base}${path}`, {
-    ...init,
-    cache: "no-store",
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${base}${path}`, {
+      ...init,
+      cache: "no-store",
+      headers,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw err;
+    }
+    const target = base || "the backend";
+    throw new ApiNetworkError(
+      `Cannot reach backend at ${target}. Make sure the API server is running and try again.`
+    );
+  }
   if (!response.ok) {
     const text = await response.text();
     throw new Error(text || response.statusText);

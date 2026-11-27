@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  ApiNetworkError,
   analyzeImpact,
   getGraph,
   getOverview,
@@ -199,9 +200,34 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
   }
 
   useEffect(() => {
-    refresh().catch((err: unknown) => {
-      addToast(err instanceof Error ? err.message : "Failed to load workspace");
-    });
+    let cancelled = false;
+    const retryDelaysMs = [800, 1600, 3200];
+
+    async function loadWithRetry() {
+      for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
+        try {
+          await refresh();
+          return;
+        } catch (err: unknown) {
+          if (cancelled) return;
+          const isTransientNetworkError =
+            err instanceof ApiNetworkError ||
+            (err instanceof Error && err.name === "ApiNetworkError");
+          if (isTransientNetworkError && attempt < retryDelaysMs.length) {
+            await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt]));
+            if (cancelled) return;
+            continue;
+          }
+          addToast(err instanceof Error ? err.message : "Failed to load workspace");
+          return;
+        }
+      }
+    }
+
+    loadWithRetry();
+    return () => {
+      cancelled = true;
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeRepo = repositories.find((r) => r.root_path === activeRepoPath);

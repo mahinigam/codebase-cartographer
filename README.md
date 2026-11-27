@@ -888,6 +888,8 @@ uv run maturin develop --release
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
+> **Tip:** If the Rust extension is already built, `uv run --no-sync uvicorn app.main:app --reload --port 8000` skips rebuilding on subsequent runs.
+
 ## 4. Start the frontend
 
 ```bash

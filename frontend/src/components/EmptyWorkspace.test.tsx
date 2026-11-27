@@ -23,4 +23,21 @@ describe('EmptyWorkspace', () => {
 
     rerender(<EmptyWorkspace defaultRepoPath="/test" onScan={onScan} loading={true} />);
   });
+
+  it('renders previously scanned repositories as accessible buttons', () => {
+    const onSelectRepo = vi.fn();
+    render(
+      <EmptyWorkspace
+        defaultRepoPath=""
+        onScan={vi.fn()}
+        loading={false}
+        repositories={[{ name: 'backend', root_path: '/workspace/backend', files: 27 }]}
+        onSelectRepo={onSelectRepo}
+      />
+    );
+
+    const repoBtn = screen.getByRole('button', { name: /backend.*\/workspace\/backend/i });
+    fireEvent.click(repoBtn);
+    expect(onSelectRepo).toHaveBeenCalledWith('/workspace/backend');
+  });
 });
