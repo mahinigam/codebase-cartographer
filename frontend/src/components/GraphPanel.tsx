@@ -153,14 +153,27 @@ function GraphPanelContent({
       rawNodes.forEach(n => nodeIds.add(n.id));
     }
 
-    const hasSelection = Boolean(selectedFile) || impactMode;
+    const isImpactActive = Boolean(impactMode && impactData);
+    const hasSelection = Boolean(selectedFile) || isImpactActive;
     let selectedNeighbors = new Set<string>();
 
     if (hasSelection) {
-      if (impactMode && impactData) {
-        selectedNeighbors.add(impactData.target);
-        impactData.direct_dependents?.forEach((d: string) => selectedNeighbors.add(d));
-        impactData.transitive_dependents?.forEach((d: any) => selectedNeighbors.add(d.path));
+      if (isImpactActive && impactData) {
+        const labelToId = new Map(rawNodes.map((n) => [n.data.label, n.id]));
+        const resolveNodeId = (pathOrId?: string) =>
+          pathOrId ? (labelToId.get(pathOrId) ?? pathOrId) : undefined;
+
+        const targetId = resolveNodeId(impactData.target);
+        if (targetId) selectedNeighbors.add(targetId);
+
+        impactData.direct_dependents?.forEach((d: string) => {
+          const id = resolveNodeId(d);
+          if (id) selectedNeighbors.add(id);
+        });
+        impactData.transitive_dependents?.forEach((d: any) => {
+          const id = resolveNodeId(typeof d === "string" ? d : d?.path);
+          if (id) selectedNeighbors.add(id);
+        });
       } else if (selectedFile) {
         const selectedId = rawNodes.find(n => n.data.label === selectedFile)?.id;
         if (selectedId) {
@@ -175,16 +188,15 @@ function GraphPanelContent({
       // Update edges styling for selection
       rawEdges = rawEdges.map((edge) => {
         const isRelated = selectedNeighbors.has(edge.source) && selectedNeighbors.has(edge.target);
-        const isDimmed = !isRelated;
 
         let strokeColor = isRelated ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.05)';
-        if (impactMode && isRelated) {
+        if (isImpactActive && isRelated) {
            strokeColor = '#f43f5e';
         }
 
         return {
           ...edge,
-          animated: impactMode && isRelated,
+          animated: isImpactActive && isRelated,
           style: { 
             stroke: strokeColor, 
             strokeWidth: isRelated ? 2 : 1.5 
@@ -201,7 +213,7 @@ function GraphPanelContent({
           node.style = { opacity: 0.3 };
         } else {
           node.style = { opacity: 1, zIndex: 10 };
-          if (impactMode && node.data.label !== impactData?.target) {
+          if (isImpactActive && node.data.label !== impactData?.target) {
             node.className = (node.className || "") + " impacted";
           }
         }
