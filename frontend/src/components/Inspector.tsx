@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, ChevronDown, ChevronRight, Activity, FileCode, ArrowRight, ArrowLeft, Network, Box, AlertTriangle } from "lucide-react";
+import { X, ChevronDown, ChevronRight, Activity, FileCode, ArrowRight, ArrowLeft, Network, Box, AlertTriangle, Loader2 } from "lucide-react";
 import { FileDetail } from "../lib/api";
 import { RiskBreakdown } from "./RiskBreakdown";
 
@@ -10,6 +10,7 @@ type Props = {
   onTraceImpact: (path: string) => void;
   onAskAboutFile?: (path: string) => void;
   impactData?: any;
+  tracingImpact?: boolean;
 };
 
 function CollapsibleSection({ title, defaultOpen = true, children, badge }: { title: string, defaultOpen?: boolean, children: React.ReactNode, badge?: number }) {
@@ -26,7 +27,7 @@ function CollapsibleSection({ title, defaultOpen = true, children, badge }: { ti
   );
 }
 
-export function Inspector({ file, onClose, onSelectFile, onTraceImpact, onAskAboutFile, impactData }: Props) {
+export function Inspector({ file, onClose, onSelectFile, onTraceImpact, onAskAboutFile, impactData, tracingImpact = false }: Props) {
   const filename = file.path.split("/").pop() || file.path;
   const isHighRisk = file.load_bearing_score > 75;
 
@@ -173,8 +174,21 @@ export function Inspector({ file, onClose, onSelectFile, onTraceImpact, onAskAbo
       </div>
 
       <footer className="inspector-actions">
-        <button className="action-btn primary" onClick={() => onTraceImpact(file.path)}>
-          <Activity size={14} /> Trace impact
+        <button
+          className="action-btn primary"
+          onClick={() => onTraceImpact(file.path)}
+          disabled={tracingImpact}
+          aria-busy={tracingImpact}
+        >
+          {tracingImpact ? (
+            <>
+              <Loader2 size={14} className="spin" /> Tracing impact...
+            </>
+          ) : (
+            <>
+              <Activity size={14} /> Trace impact
+            </>
+          )}
         </button>
         {onAskAboutFile && (
           <button className="action-btn" onClick={() => onAskAboutFile(file.path)}>

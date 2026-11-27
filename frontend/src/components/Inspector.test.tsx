@@ -77,4 +77,32 @@ describe('Inspector', () => {
       />
     );
   });
+
+  it('shows loading animation and disables Trace impact button while tracing', () => {
+    const onTraceImpact = vi.fn();
+    const fileData = {
+      path: 'a.py',
+      loc: 100,
+      load_bearing_score: 20,
+      dependents: [],
+      imports: [],
+      external_deps: [],
+      symbols: [],
+    };
+    render(
+      <Inspector
+        file={fileData as any}
+        onClose={vi.fn()}
+        onSelectFile={vi.fn()}
+        onTraceImpact={onTraceImpact}
+        tracingImpact={true}
+      />
+    );
+
+    const traceBtn = screen.getByRole('button', { name: /Tracing impact/i });
+    expect(traceBtn.hasAttribute('disabled')).toBe(true);
+    expect(traceBtn.getAttribute('aria-busy')).toBe('true');
+    fireEvent.click(traceBtn);
+    expect(onTraceImpact).not.toHaveBeenCalled();
+  });
 });

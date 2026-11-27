@@ -187,10 +187,12 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
   }
 
   const [impactData, setImpactData] = useState<any>(null);
+  const [loadingImpact, setLoadingImpact] = useState(false);
 
   async function handleTraceImpact(path: string) {
     setImpactMode(true);
     setImpactData(null);
+    setLoadingImpact(true);
     try {
       const result = await analyzeImpact(path, 3, activeRepoPath);
       setImpactData(result);
@@ -204,6 +206,8 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
     } catch (err: unknown) {
       addToast(err instanceof Error ? err.message : "Impact analysis failed");
       setImpactMode(false);
+    } finally {
+      setLoadingImpact(false);
     }
   }
 
@@ -310,6 +314,8 @@ export default function CartographerApp({ defaultRepoPath }: Props) {
                     onClose={() => setSelectedFile(null)}
                     onSelectFile={(path) => selectFile(path, "inspector")}
                     onTraceImpact={handleTraceImpact}
+                    impactData={impactData}
+                    tracingImpact={loadingImpact}
                   />
                 </Panel>
               )}
